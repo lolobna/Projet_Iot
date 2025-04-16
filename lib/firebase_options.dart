@@ -17,10 +17,7 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      throw UnsupportedError(
-        'DefaultFirebaseOptions have not been configured for web - '
-        'you can reconfigure this by running the FlutterFire CLI again.',
-      );
+      return web;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
@@ -54,6 +51,7 @@ class DefaultFirebaseOptions {
     appId: '1:439870589264:android:de4bc54bac04b482e10455',
     messagingSenderId: '439870589264',
     projectId: 'iot-projet-32bdb',
+    databaseURL: 'https://iot-projet-32bdb-default-rtdb.firebaseio.com',
     storageBucket: 'iot-projet-32bdb.firebasestorage.app',
   );
 
@@ -62,7 +60,19 @@ class DefaultFirebaseOptions {
     appId: '1:439870589264:ios:7fac40429024f46fe10455',
     messagingSenderId: '439870589264',
     projectId: 'iot-projet-32bdb',
+    databaseURL: 'https://iot-projet-32bdb-default-rtdb.firebaseio.com',
     storageBucket: 'iot-projet-32bdb.firebasestorage.app',
     iosBundleId: 'com.example.flutterApplication1',
+  );
+
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyCADn7CAYZMeYpcNLFjqQlC70rbwVTPDVo',
+    authDomain: 'iot-projet-32bdb.firebaseapp.com',
+    databaseURL: 'https://iot-projet-32bdb-default-rtdb.firebaseio.com',
+    projectId: 'iot-projet-32bdb',
+    storageBucket: 'iot-projet-32bdb.firebasestorage.app',
+    messagingSenderId: '439870589264',
+    appId: '1:439870589264:web:38187494d4c04d85e10455',
+    measurementId: 'G-HEB1HFEHDZ',
   );
 }
