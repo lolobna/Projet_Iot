@@ -19,7 +19,10 @@ class UserService {
     );
     final uid = userCredential.user!.uid;
 
-    await _db.child("users/$uid").set({
+    // Définir le chemin correct selon le rôle
+    final rolePath = role == "medecin" ? "users/medecins" : "users/patients";
+
+    await _db.child("$rolePath/$uid").set({
       "email": email,
       "nom": nom,
       "prenom": prenom,
@@ -34,7 +37,15 @@ class UserService {
 
   static Future<String> getUserRole() async {
     final uid = _auth.currentUser!.uid;
-    final snapshot = await _db.child("users/$uid/role").get();
-    return snapshot.value.toString();
+
+    // Essayer d'abord dans 'medecins'
+    final medecinSnapshot = await _db.child("users/medecins/$uid/role").get();
+    if (medecinSnapshot.exists) return medecinSnapshot.value.toString();
+
+    // Sinon, chercher dans 'patients'
+    final patientSnapshot = await _db.child("users/patients/$uid/role").get();
+    if (patientSnapshot.exists) return patientSnapshot.value.toString();
+
+    throw Exception("Rôle utilisateur non trouvé");
   }
 }

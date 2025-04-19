@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/services/PrescriptionService.dart';
-import '../services/notification_service.dart';
+import '../../services/notification_service.dart';
 
 
 class PatientHomePage extends StatefulWidget {
