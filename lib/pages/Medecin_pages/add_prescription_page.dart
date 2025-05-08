@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:flutter_application_1/pages/Medecin_pages/add_patient_page.dart';
-import 'package:flutter_application_1/pages/Medecin_pages/SelectPatientPage.dart';
-
-import 'package:flutter_application_1/pages/Medecin_pages/medecin_home_page.dart';
-
 
 class PrescriptionPage extends StatefulWidget {
   final String patientUid;
@@ -17,11 +13,13 @@ class PrescriptionPage extends StatefulWidget {
 }
 
 class _PrescriptionPageState extends State<PrescriptionPage> {
-  final DatabaseReference _db = FirebaseDatabase.instance.ref();
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  List<List<TextEditingController>> descControllers = [];
-  List<List<TimeOfDay?>> times = [];
   List<TextEditingController> nomControllers = [];
+  List<List<String>> horairesList = [];
+  List<TextEditingController> descControllers = [];
+
+  final int maxMedicaments = 4;
 
   String patientName = "";
   String patientSurname = "";
@@ -30,38 +28,15 @@ class _PrescriptionPageState extends State<PrescriptionPage> {
   @override
   void initState() {
     super.initState();
-    // Ajouter le premier médicament par défaut
-    addMedicament();
-    // Charger les informations du patient
     fetchPatientInfo();
-  }
-
-  void addMedicament() {
-    if (nomControllers.length < 4) {
-      setState(() {
-        nomControllers.add(TextEditingController());
-        descControllers.add(List.generate(3, (_) => TextEditingController()));
-        times.add(List.generate(3, (_) => null));
-      });
-    }
-  }
-
-  Future<void> selectTime(BuildContext context, int medIndex, int timeIndex) async {
-    final TimeOfDay? picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-    );
-    if (picked != null) {
-      setState(() {
-        times[medIndex][timeIndex] = picked;
-      });
-    }
+    addMedicament(); // Ajouter automatiquement le premier médicament
   }
 
   Future<void> fetchPatientInfo() async {
-    final snapshot = await _db.child("users/patients/${widget.patientUid}").get();
+    final snapshot =
+        await _db.collection('patient').doc(widget.patientUid).get();
     if (snapshot.exists) {
-      final data = snapshot.value as Map;
+      final data = snapshot.data()!;
       setState(() {
         patientName = data["nom"] ?? "Inconnu";
         patientSurname = data["prenom"] ?? "Inconnu";
@@ -70,96 +45,170 @@ class _PrescriptionPageState extends State<PrescriptionPage> {
     }
   }
 
+  void addMedicament() {
+    if (nomControllers.length < maxMedicaments) {
+      setState(() {
+        nomControllers.add(TextEditingController());
+        horairesList.add([""]);
+        descControllers.add(TextEditingController());
+      });
+    }
+  }
+
   Future<void> submitPrescription() async {
     if (widget.patientUid.isEmpty) return;
-    final medecinUid = FirebaseAuth.instance.currentUser!.uid;
+    final medecinUid = FirebaseAuth.instance.currentUser?.uid;
+
+    if (medecinUid == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Erreur : médecin non authentifié")),
+      );
+      return;
+    }
 
     final Map<String, dynamic> medicaments = {};
 
     for (int i = 0; i < nomControllers.length; i++) {
       String medKey = String.fromCharCode(65 + i); // A, B, C, D
       medicaments[medKey] = {
-        "nom": nomControllers[i].text,
-        "prises": List.generate(3, (j) {
-          return {
-            "horaire": times[i][j]?.format(context) ?? "",
-            "description": descControllers[i][j].text,
-            "etat": {
-              "status": "non pris",
-              "heureReelle": "",
-              "retardMinutes": "",
-            },
-            "notificationEnvoyee": false,
-          };
-        }),
+        "medicament_name": nomControllers[i].text.trim(),
+        "horaires": horairesList[i],
+        "note": descControllers[i].text.trim(),
+        "vide": true,
       };
     }
 
     final prescription = {
       "medecinId": medecinUid,
+      "patientId": widget.patientUid,
       "date": DateTime.now().toIso8601String().split("T")[0],
-      "medicaments": medicaments,
+      "compartiments": {
+        "A": medicaments["A"],
+        "B": medicaments["B"],
+        "C": medicaments["C"],
+        "D": medicaments["D"],
+      },
     };
 
-    await _db.child("users/patients/${widget.patientUid}/prescriptions").push().set(prescription);
+    final dbRef = FirebaseDatabase.instance.ref().child("prescriptions").push();
+    await dbRef.set(prescription);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Prescription enregistrée")),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text("Prescription enregistrée")));
+
+    setState(() {
+      nomControllers.clear();
+      descControllers.clear();
+      horairesList.clear();
+      addMedicament(); // Réinitialiser avec un champ vide
+    });
   }
 
   Widget medicamentForm(String label, int index) {
     return Card(
       margin: EdgeInsets.symmetric(vertical: 8),
       elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            Text(
+              label,
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
             SizedBox(height: 10),
             TextField(
               controller: nomControllers[index],
               decoration: InputDecoration(
                 labelText: 'Nom du médicament',
-                prefixIcon: Icon(Icons.medical_services, color: Colors.blueAccent),
+                prefixIcon: Icon(
+                  Icons.medical_services,
+                  color: Colors.blueAccent,
+                ),
                 border: OutlineInputBorder(),
               ),
             ),
             SizedBox(height: 12),
-            for (int i = 0; i < 3; i++) ...[
-              Text("Prise ${i + 1}", style: TextStyle(fontWeight: FontWeight.w500)),
-              Row(
-                children: [
-                  Text("Heure : ${times[index][i]?.format(context) ?? "--:--"}"),
-                  SizedBox(width: 10),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    onPressed: () => selectTime(context, index, i),
-                    child: Text("Choisir l'heure"),
-                  ),
-                ],
+            for (int i = 0; i < horairesList[index].length; i++) ...[
+              Text(
+                "Horaire ${i + 1}",
+                style: TextStyle(fontWeight: FontWeight.w500),
               ),
-              SizedBox(height: 8),
-              TextField(
-                controller: descControllers[index][i],
-                decoration: InputDecoration(
-                  labelText: 'Description',
-                  prefixIcon: Icon(Icons.description, color: Colors.blueAccent),
-                  border: OutlineInputBorder(),
+              SizedBox(height: 6),
+              InkWell(
+                onTap: () async {
+                  TimeOfDay? picked = await showTimePicker(
+                    context: context,
+                    initialTime: TimeOfDay.now(),
+                    builder: (context, child) {
+                      return MediaQuery(
+                        data: MediaQuery.of(
+                          context,
+                        ).copyWith(alwaysUse24HourFormat: true),
+                        child: child!,
+                      );
+                    },
+                  );
+                  if (picked != null) {
+                    setState(() {
+                      final now = DateTime.now();
+                      final formatted = TimeOfDay(
+                        hour: picked.hour,
+                        minute: picked.minute,
+                      );
+                      final time = DateTime(
+                        now.year,
+                        now.month,
+                        now.day,
+                        formatted.hour,
+                        formatted.minute,
+                      );
+                      horairesList[index][i] =
+                          "${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}";
+                    });
+                  }
+                },
+                child: InputDecorator(
+                  decoration: InputDecoration(
+                    labelText: 'Horaire',
+                    prefixIcon: Icon(
+                      Icons.access_time,
+                      color: Colors.blueAccent,
+                    ),
+                    border: OutlineInputBorder(),
+                  ),
+                  child: Text(
+                    horairesList[index][i].isEmpty
+                        ? 'Sélectionner une heure'
+                        : horairesList[index][i],
+                    style: TextStyle(fontSize: 16),
+                  ),
                 ),
               ),
               SizedBox(height: 12),
-            ]
+            ],
+            if (horairesList[index].length < 3)
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    horairesList[index].add("");
+                  });
+                },
+                icon: Icon(Icons.add, color: Colors.green),
+                label: Text("Ajouter un horaire"),
+              ),
+            SizedBox(height: 12),
+            TextField(
+              controller: descControllers[index],
+              decoration: InputDecoration(
+                labelText: 'Description',
+                prefixIcon: Icon(Icons.description, color: Colors.blueAccent),
+                border: OutlineInputBorder(),
+              ),
+            ),
           ],
         ),
       ),
@@ -168,12 +217,10 @@ class _PrescriptionPageState extends State<PrescriptionPage> {
 
   @override
   void dispose() {
-    for (var list in descControllers) {
-      for (var controller in list) {
-        controller.dispose();
-      }
-    }
     for (var controller in nomControllers) {
+      controller.dispose();
+    }
+    for (var controller in descControllers) {
       controller.dispose();
     }
     super.dispose();
@@ -186,93 +233,11 @@ class _PrescriptionPageState extends State<PrescriptionPage> {
         title: Text("Ajouter une prescription"),
         backgroundColor: Colors.blueAccent,
       ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(
-                color: Colors.blueAccent,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CircleAvatar(
-                    radius: 30,
-                    backgroundColor: Colors.white,
-                    child: Icon(
-                      Icons.person,
-                      size: 40,
-                      color: Colors.blueAccent,
-                    ),
-                  ),
-                  SizedBox(height: 10),
-                  Text(
-                    'Médecin',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Text(
-                    'medecin@example.com',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-             ListTile(
-              leading: Icon(Icons.home),
-              title: Text('Accueil'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => MedecinHomePage()),
-                );
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.person_add),
-              title: Text('Ajouter un patient'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => AddPatientPage()),
-                );
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.list),
-              title: Text('Voir les patients'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => SelectPatientPage()),
-                );
-              },
-            ),
-            Divider(),
-            ListTile(
-              leading: Icon(Icons.logout),
-              title: Text('Déconnexion'),
-              onTap: () {
-                // Ajoutez ici la logique de déconnexion
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        ),
-      ),
       body: SingleChildScrollView(
         padding: EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Informations du patient
             Card(
               margin: EdgeInsets.only(bottom: 16),
               elevation: 4,
@@ -292,26 +257,19 @@ class _PrescriptionPageState extends State<PrescriptionPage> {
                       ),
                     ),
                     SizedBox(height: 10),
-                    Text(
-                      "Nom : $patientName",
-                      style: TextStyle(fontSize: 16),
-                    ),
+                    Text("Nom : $patientName", style: TextStyle(fontSize: 16)),
                     Text(
                       "Prénom : $patientSurname",
                       style: TextStyle(fontSize: 16),
                     ),
-                    Text(
-                      "CIN : $patientCIN",
-                      style: TextStyle(fontSize: 16),
-                    ),
+                    Text("CIN : $patientCIN", style: TextStyle(fontSize: 16)),
                   ],
                 ),
               ),
             ),
-            // Formulaire des médicaments
             for (int i = 0; i < nomControllers.length; i++)
               medicamentForm("Médicament ${String.fromCharCode(65 + i)}", i),
-            if (nomControllers.length < 4)
+            if (nomControllers.length < maxMedicaments)
               ElevatedButton.icon(
                 onPressed: addMedicament,
                 icon: Icon(Icons.add),

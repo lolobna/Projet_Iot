@@ -1,9 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_database/firebase_database.dart';
 
 class UserService {
   static final _auth = FirebaseAuth.instance;
-  static final _db = FirebaseDatabase.instance.ref();
+  static final _db = FirebaseFirestore.instance;
 
   static Future<void> signUp({
     required String email,
@@ -19,10 +19,10 @@ class UserService {
     );
     final uid = userCredential.user!.uid;
 
-    // Définir le chemin correct selon le rôle
-    final rolePath = role == "medecin" ? "users/medecins" : "users/patients";
+    // Définir la collection et le document dans Firestore selon le rôle
+    final roleCollection = role == "medecin" ? "medecin" : "patient";
 
-    await _db.child("$rolePath/$uid").set({
+    await _db.collection(roleCollection).doc(uid).set({
       "email": email,
       "nom": nom,
       "prenom": prenom,
@@ -38,13 +38,13 @@ class UserService {
   static Future<String> getUserRole() async {
     final uid = _auth.currentUser!.uid;
 
-    // Essayer d'abord dans 'medecins'
-    final medecinSnapshot = await _db.child("users/medecins/$uid/role").get();
-    if (medecinSnapshot.exists) return medecinSnapshot.value.toString();
+    // Chercher d'abord dans les 'medecins'
+    final medecinDoc = await _db.collection("medecin").doc(uid).get();
+    if (medecinDoc.exists) return medecinDoc["role"].toString();
 
     // Sinon, chercher dans 'patients'
-    final patientSnapshot = await _db.child("users/patients/$uid/role").get();
-    if (patientSnapshot.exists) return patientSnapshot.value.toString();
+    final patientDoc = await _db.collection("patient").doc(uid).get();
+    if (patientDoc.exists) return patientDoc["role"].toString();
 
     throw Exception("Rôle utilisateur non trouvé");
   }

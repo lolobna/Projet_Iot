@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_database/firebase_database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_application_1/pages/Medecin_pages/add_patient_page.dart';
 import 'package:flutter_application_1/pages/Medecin_pages/SelectPatientPage.dart';
 
@@ -10,39 +10,37 @@ class MedecinHomePage extends StatefulWidget {
 }
 
 class _MedecinHomePageState extends State<MedecinHomePage> {
-  final DatabaseReference _db = FirebaseDatabase.instance.ref();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   Future<List<Map<String, dynamic>>> fetchPatients() async {
     final medecinId = FirebaseAuth.instance.currentUser?.uid;
     if (medecinId == null) return [];
 
-    final patientsRef = _db.child('users/medecins/$medecinId/patients');
-    final patientsSnapshot = await patientsRef.get();
+    final medecinDoc = await _firestore.collection('medecin').doc(medecinId).get();
 
-    if (patientsSnapshot.exists && patientsSnapshot.value != null) {
-      final patientIdsMap = Map<String, dynamic>.from(patientsSnapshot.value as Map);
+    if (!medecinDoc.exists || !(medecinDoc.data()?['patient'] is List)) return [];
 
-      List<Map<String, dynamic>> loadedPatients = [];
+    final List<dynamic> patientsList = medecinDoc.data()?['patients'];
 
-      for (String patientUid in patientIdsMap.keys) {
-        final patientSnapshot = await _db.child('users/patients/$patientUid').get();
-        if (patientSnapshot.exists && patientSnapshot.value != null) {
-          final patientData = Map<String, dynamic>.from(patientSnapshot.value as Map);
+    List<Map<String, dynamic>> loadedPatients = [];
 
-          loadedPatients.add({
-            "uid": patientUid,
-            "nom": patientData["nom"] ?? "Sans nom",
-            "prenom": patientData["prenom"] ?? "",
-            "cin": patientData["CIN"] ?? "",
-            "pourcentagePrise": patientData["pourcentagePrise"] ?? 0,
-          });
-        }
+    for (var patientRef in patientsList) {
+      final patientUid = patientRef['uid'];
+      final patientDoc = await _firestore.collection('patient').doc(patientUid).get();
+
+      if (patientDoc.exists) {
+        final patientData = patientDoc.data()!;
+        loadedPatients.add({
+          "uid": patientUid,
+          "nom": patientData["nom"] ?? "Sans nom",
+          "prenom": patientData["prenom"] ?? "",
+          "cin": patientData["cin"] ?? "",
+          "pourcentagePrise": patientData["pourcentagePrise"] ?? 0,
+        });
       }
-
-      return loadedPatients;
-    } else {
-      return [];
     }
+
+    return loadedPatients;
   }
 
   @override
@@ -82,7 +80,7 @@ class _MedecinHomePageState extends State<MedecinHomePage> {
                     ),
                   ),
                   Text(
-                    'medecin@example.com',
+                    'medecin@example.com', // À remplacer dynamiquement si nécessaire
                     style: TextStyle(
                       color: Colors.white70,
                       fontSize: 14,
@@ -126,7 +124,7 @@ class _MedecinHomePageState extends State<MedecinHomePage> {
               leading: Icon(Icons.logout),
               title: Text('Déconnexion'),
               onTap: () {
-                // Ajoutez ici la logique de déconnexion
+                FirebaseAuth.instance.signOut();
                 Navigator.pop(context);
               },
             ),
@@ -154,12 +152,11 @@ class _MedecinHomePageState extends State<MedecinHomePage> {
                   DataColumn(label: Text('État')),
                 ],
                 rows: patients.map((patient) {
-                  // Exemple de calcul du pourcentage de prise (remplacez par votre logique réelle)
                   final pourcentagePrise = (patient['pourcentagePrise'] ?? 0).toDouble();
                   final etat = pourcentagePrise > 90 ? "Bien" : "Mal";
 
                   return DataRow(cells: [
-                    DataCell(Text(patient['nom'] + " " + patient['prenom'])),
+                    DataCell(Text("${patient['nom']} ${patient['prenom']}")),
                     DataCell(Text(patient['cin'])),
                     DataCell(Text("${pourcentagePrise.toStringAsFixed(2)}%")),
                     DataCell(Text(etat)),
