@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_database/firebase_database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'add_prescription_page.dart';
 import 'PatientProfilePage.dart';
-
 import 'package:flutter_application_1/pages/Medecin_pages/add_patient_page.dart';
-import 'package:flutter_application_1/pages/Medecin_pages/SelectPatientPage.dart';
-
 import 'package:flutter_application_1/pages/Medecin_pages/medecin_home_page.dart';
 
 class SelectPatientPage extends StatefulWidget {
@@ -15,8 +13,8 @@ class SelectPatientPage extends StatefulWidget {
 }
 
 class _SelectPatientPageState extends State<SelectPatientPage> {
-  final DatabaseReference _db = FirebaseDatabase.instance.ref();
-  List<Map<String, dynamic>> patientsList = [];
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  List<Map<String, dynamic>> allPatientsList = [];
   List<Map<String, dynamic>> filteredPatientsList = [];
   TextEditingController searchController = TextEditingController();
 
@@ -24,58 +22,68 @@ class _SelectPatientPageState extends State<SelectPatientPage> {
   void initState() {
     super.initState();
     fetchPatients();
-    searchController.addListener(() {
-      filterPatients();
-    });
+    searchController.addListener(filterPatients);
   }
 
+  // Récupération des patients
   void fetchPatients() async {
     final medecinId = FirebaseAuth.instance.currentUser?.uid;
     if (medecinId == null) return;
 
-    final patientsRef = _db.child('users/medecins/$medecinId/patients');
-    final patientsSnapshot = await patientsRef.get();
+    try {
+      final medecinDoc = await _firestore.collection('medecin').doc(medecinId).get();
 
-    if (patientsSnapshot.exists && patientsSnapshot.value != null) {
-      final patientIdsMap = Map<String, dynamic>.from(patientsSnapshot.value as Map);
+      if (medecinDoc.exists && medecinDoc.data() != null) {
+        final data = medecinDoc.data()!;
+        final List<dynamic> patientIds = data['My_patients'] ?? [];
 
-      List<Map<String, dynamic>> loadedPatients = [];
+        List<Map<String, dynamic>> loadedPatients = [];
 
-      for (String patientUid in patientIdsMap.keys) {
-        final patientSnapshot = await _db.child('users/patients/$patientUid').get();
-        if (patientSnapshot.exists && patientSnapshot.value != null) {
-          final patientData = Map<String, dynamic>.from(patientSnapshot.value as Map);
+        for (var patientId in patientIds) {
+          final patientDoc = await _firestore.collection('patient').doc(patientId).get();
 
-          loadedPatients.add({
-            "uid": patientUid,
-            "nom": patientData["nom"] ?? "Sans nom",
-            "prenom": patientData["prenom"] ?? "",
-            "cin": patientData["CIN"] ?? "",
-          });
+          if (patientDoc.exists && patientDoc.data() != null) {
+            final patientDetails = patientDoc.data()!;
+            loadedPatients.add({
+              "uid": patientId,
+              "nom": patientDetails["nom"] ?? "Sans nom",
+              "prenom": patientDetails["prenom"] ?? "",
+              "cin": patientDetails["CIN"] ?? "",
+            });
+          }
         }
-      }
 
-      setState(() {
-        patientsList = loadedPatients;
-        filteredPatientsList = loadedPatients; // Initialement, tous les patients sont affichés
-      });
-    } else {
-      print("Aucun patient lié à ce médecin.");
-      setState(() {
-        patientsList = [];
-        filteredPatientsList = [];
-      });
+        setState(() {
+          allPatientsList = loadedPatients;
+          filteredPatientsList = loadedPatients;
+        });
+      } else {
+        print("Aucun patient lié à ce médecin.");
+        setState(() {
+          allPatientsList = [];
+          filteredPatientsList = [];
+        });
+      }
+    } catch (e) {
+      print("Erreur lors de la récupération des patients: $e");
     }
   }
 
+  // Filtrage des patients
   void filterPatients() {
     final query = searchController.text.toLowerCase();
     setState(() {
-      filteredPatientsList = patientsList.where((patient) {
+      filteredPatientsList = allPatientsList.where((patient) {
         final fullName = "${patient['prenom']} ${patient['nom']}".toLowerCase();
         return fullName.contains(query);
       }).toList();
     });
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -90,77 +98,56 @@ class _SelectPatientPageState extends State<SelectPatientPage> {
           padding: EdgeInsets.zero,
           children: [
             DrawerHeader(
-              decoration: BoxDecoration(
-                color: Colors.blueAccent,
-              ),
+              decoration: BoxDecoration(color: Colors.blueAccent),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   CircleAvatar(
                     radius: 30,
                     backgroundColor: Colors.white,
-                    child: Icon(
-                      Icons.person,
-                      size: 40,
-                      color: Colors.blueAccent,
-                    ),
+                    child: Icon(Icons.person, size: 40, color: Colors.blueAccent),
                   ),
                   SizedBox(height: 10),
                   Text(
                     'Médecin',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   Text(
                     'medecin@example.com',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                    ),
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
                   ),
                 ],
               ),
             ),
-             ListTile(
+            ListTile(
               leading: Icon(Icons.home),
               title: Text('Accueil'),
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => MedecinHomePage()),
-                );
+                Navigator.push(context, MaterialPageRoute(builder: (context) => MedecinHomePage()));
               },
             ),
             ListTile(
               leading: Icon(Icons.person_add),
               title: Text('Ajouter un patient'),
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => AddPatientPage()),
-                );
+                Navigator.push(context, MaterialPageRoute(builder: (context) => AddPatientPage()));
               },
             ),
             ListTile(
               leading: Icon(Icons.list),
               title: Text('Voir les patients'),
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => SelectPatientPage()),
-                );
+                Navigator.pop(context); // éviter de pousser la même page
               },
             ),
             Divider(),
             ListTile(
               leading: Icon(Icons.logout),
               title: Text('Déconnexion'),
-              onTap: () {
-                // Ajoutez ici la logique de déconnexion
-                Navigator.pop(context);
+              onTap: () async {
+                await FirebaseAuth.instance.signOut();
+                Navigator.of(context).pop(); // Fermer le drawer
+                Navigator.of(context).pop(); // Revenir à la page de login
               },
             ),
           ],
@@ -168,7 +155,6 @@ class _SelectPatientPageState extends State<SelectPatientPage> {
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: TextField(
@@ -176,13 +162,10 @@ class _SelectPatientPageState extends State<SelectPatientPage> {
               decoration: InputDecoration(
                 labelText: "Rechercher un patient",
                 prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
           ),
-          // Liste des patients
           Expanded(
             child: filteredPatientsList.isEmpty
                 ? Center(
@@ -198,9 +181,7 @@ class _SelectPatientPageState extends State<SelectPatientPage> {
                       return Card(
                         margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         elevation: 4,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         child: ListTile(
                           leading: CircleAvatar(
                             backgroundColor: Colors.blueAccent,
@@ -210,28 +191,21 @@ class _SelectPatientPageState extends State<SelectPatientPage> {
                             "${patient['prenom']} ${patient['nom']}",
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
-                          subtitle: Text(
-                            "CIN: ${patient['cin']}", // Correction : affichage du CIN au lieu de l'UID
-                            style: TextStyle(color: Colors.grey[600]),
-                          ),
+                          subtitle: Text("CIN: ${patient['cin']}"),
                           trailing: PopupMenuButton<String>(
                             onSelected: (value) {
                               if (value == "Profil") {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) => PatientProfilePage(
-                                      patientUid: patient['uid'],
-                                    ),
+                                    builder: (context) => PatientProfilePage(patientUid: patient['uid']),
                                   ),
                                 );
                               } else if (value == "Prescription") {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) => PrescriptionPage(
-                                      patientUid: patient['uid'],
-                                    ),
+                                    builder: (context) => PrescriptionPage(patientUid: patient['uid']),
                                   ),
                                 );
                               }
@@ -267,11 +241,5 @@ class _SelectPatientPageState extends State<SelectPatientPage> {
         ],
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    searchController.dispose();
-    super.dispose();
   }
 }
