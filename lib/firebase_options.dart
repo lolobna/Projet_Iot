@@ -4,16 +4,6 @@ import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
-/// Default [FirebaseOptions] for use with your Firebase apps.
-///
-/// Example:
-/// ```dart
-/// import 'firebase_options.dart';
-/// // ...
-/// await Firebase.initializeApp(
-///   options: DefaultFirebaseOptions.currentPlatform,
-/// );
-/// ```
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
@@ -26,17 +16,17 @@ class DefaultFirebaseOptions {
         return ios;
       case TargetPlatform.macOS:
         throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for macos - '
+          'DefaultFirebaseOptions have not been configured for macOS - '
           'you can reconfigure this by running the FlutterFire CLI again.',
         );
       case TargetPlatform.windows:
         throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
+          'DefaultFirebaseOptions have not been configured for Windows - '
           'you can reconfigure this by running the FlutterFire CLI again.',
         );
       case TargetPlatform.linux:
         throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for linux - '
+          'DefaultFirebaseOptions have not been configured for Linux - '
           'you can reconfigure this by running the FlutterFire CLI again.',
         );
       default:
@@ -52,7 +42,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '439870589264',
     projectId: 'iot-projet-32bdb',
     databaseURL: 'https://iot-projet-32bdb-default-rtdb.firebaseio.com',
-    storageBucket: 'iot-projet-32bdb.firebasestorage.app',
+    storageBucket: 'iot-projet-32bdb.appspot.com', // ✅ correction ici
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
@@ -61,16 +51,16 @@ class DefaultFirebaseOptions {
     messagingSenderId: '439870589264',
     projectId: 'iot-projet-32bdb',
     databaseURL: 'https://iot-projet-32bdb-default-rtdb.firebaseio.com',
-    storageBucket: 'iot-projet-32bdb.firebasestorage.app',
+    storageBucket: 'iot-projet-32bdb.appspot.com', // ✅ correction ici
     iosBundleId: 'com.example.flutterApplication1',
   );
 
   static const FirebaseOptions web = FirebaseOptions(
     apiKey: 'AIzaSyCADn7CAYZMeYpcNLFjqQlC70rbwVTPDVo',
     authDomain: 'iot-projet-32bdb.firebaseapp.com',
-    databaseURL: 'https://iot-projet-32bdb-default-rtdb.firebaseio.com',
+    databaseURL: 'https://iot-projet-32bdb-default-rtdb.firebaseio.com/',
     projectId: 'iot-projet-32bdb',
-    storageBucket: 'iot-projet-32bdb.firebasestorage.app',
+    storageBucket: 'iot-projet-32bdb.appspot.com', // ✅ correction ici
     messagingSenderId: '439870589264',
     appId: '1:439870589264:web:38187494d4c04d85e10455',
     measurementId: 'G-HEB1HFEHDZ',

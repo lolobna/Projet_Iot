@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 class UserService {
   static final _auth = FirebaseAuth.instance;
@@ -19,10 +20,19 @@ class UserService {
     );
     final uid = userCredential.user!.uid;
 
-    // Définir la collection et le document dans Firestore selon le rôle
+    // 🔥 Écriture dans Firestore
     final roleCollection = role == "medecin" ? "medecin" : "patient";
 
     await _db.collection(roleCollection).doc(uid).set({
+      "email": email,
+      "nom": nom,
+      "prenom": prenom,
+      "role": role,
+      if (role == "patient") "CIN": cin,
+    });
+
+    // ✅ Écriture dans Realtime Database pour le profil patient
+    await FirebaseDatabase.instance.ref("users/$uid").set({
       "email": email,
       "nom": nom,
       "prenom": prenom,
@@ -38,11 +48,9 @@ class UserService {
   static Future<String> getUserRole() async {
     final uid = _auth.currentUser!.uid;
 
-    // Chercher d'abord dans les 'medecins'
     final medecinDoc = await _db.collection("medecin").doc(uid).get();
     if (medecinDoc.exists) return medecinDoc["role"].toString();
 
-    // Sinon, chercher dans 'patients'
     final patientDoc = await _db.collection("patient").doc(uid).get();
     if (patientDoc.exists) return patientDoc["role"].toString();
 
