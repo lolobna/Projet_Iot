@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter_application_1/pages/Medecin_pages/add_patient_page.dart';
 import 'package:flutter_application_1/pages/Medecin_pages/SelectPatientPage.dart';
 import 'package:flutter_application_1/pages/Medecin_pages/medecin_home_page.dart';
 
@@ -35,7 +34,7 @@ class _AddPatientPageState extends State<AddPatientPage> {
 
     for (var doc in lesPatients.docs) {
       final data = doc.data();
-      final cin = data['cin']?.toString() ?? '';
+      final cin = data['CIN']?.toString() ?? '';
 
       if (cin.startsWith(cinInput)) {
         patients.add({
@@ -193,7 +192,7 @@ class _AddPatientPageState extends State<AddPatientPage> {
                               child: Icon(Icons.person, color: Colors.white),
                             ),
                             title: Text("${patient['nom']} ${patient['prenom']}"),
-                            subtitle: Text("CIN: ${patient['CIN']}"),
+                            subtitle: Text("CIN: ${patient['cin']}"),
                             trailing: patient['isAdded']
                                 ? Icon(Icons.check, color: Colors.green)
                                 : IconButton(

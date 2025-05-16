@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'add_prescription_page.dart';
+import 'HistoriquePrisesPage.dart';
 
 class PatientProfilePage extends StatefulWidget {
   final String patientUid;
@@ -48,55 +50,46 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
 
   void fetchPrescriptions() async {
     try {
-      QuerySnapshot prescriptionsSnapshot =
-          await _firestore
-              .collection('patient')
-              .doc(widget.patientUid)
-              .collection('prescriptions')
-              .get();
+      final databaseRef = FirebaseDatabase.instance.ref();
+      final prescriptionsSnapshot =
+          await databaseRef.child('prescriptions').get();
 
-      if (prescriptionsSnapshot.docs.isNotEmpty) {
+      if (prescriptionsSnapshot.exists) {
         List<Map<String, dynamic>> loadedPrescriptions = [];
 
-        for (var doc in prescriptionsSnapshot.docs) {
-          var prescription = doc.data() as Map<String, dynamic>;
-          String? medecinNom;
-          String? medecinPrenom;
-          final medecinId = prescription['medecinId'];
+        prescriptionsSnapshot.children.forEach((doc) {
+          final prescription = Map<String, dynamic>.from(doc.value as Map);
 
-          // Fetch doctor data if medecinId exists
-          if (medecinId != null && medecinId.isNotEmpty) {
-            DocumentSnapshot medecinSnapshot =
-                await _firestore.collection('medecin').doc(medecinId).get();
-            if (medecinSnapshot.exists) {
-              var medecinData = medecinSnapshot.data() as Map<String, dynamic>;
-              medecinNom = medecinData['nom'];
-              medecinPrenom = medecinData['prenom'];
-            }
+          if (prescription['patientId'] == widget.patientUid) {
+            final compartimentsMap = prescription['compartiments'] as Map;
+            final compartiments =
+                compartimentsMap.entries.map((entry) {
+                  final compartiment = Map<String, dynamic>.from(
+                    entry.value as Map,
+                  );
+                  final horaires =
+                      compartiment['horaires'] is Map
+                          ? (compartiment['horaires'] as Map).values.toList()
+                          : (compartiment['horaires'] as List)
+                              .map((h) => h.toString())
+                              .toList();
+
+                  return {
+                    'idcompartiment': entry.key,
+                    'madicament_name': compartiment['medicament_name'],
+                    'horaires': horaires,
+                    'note': compartiment['note'],
+                  };
+                }).toList();
+
+            loadedPrescriptions.add({
+              'prescriptionId': doc.key,
+              'date': prescription['date'],
+              'medecinId': prescription['medecinId'],
+              'compartiments': compartiments,
+            });
           }
-
-          var compartiments =
-              prescription['compartiments']
-                  ?.map(
-                    (compartiment) => {
-                      'idcompartiment': compartiment['idcompartiment'],
-                      'name': compartiment['name'],
-                      'madicament_name': compartiment['madicament_name'],
-                      'horaires': compartiment['horaires'],
-                      'statut_prise': compartiment['statut_prise'],
-                    },
-                  )
-                  .toList();
-
-          loadedPrescriptions.add({
-            'prescriptionId':
-                doc.id, // Adding the prescriptionId from Firestore
-            'date': prescription['date'],
-            'medecinNom': medecinNom,
-            'medecinPrenom': medecinPrenom,
-            'compartiments': compartiments,
-          });
-        }
+        });
 
         setState(() {
           prescriptions = loadedPrescriptions;
@@ -108,18 +101,57 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
         });
       }
     } catch (e) {
+      print('Erreur lors de la récupération des prescriptions : $e');
       setState(() {
         isLoading = false;
       });
     }
   }
 
+  Future<double> _calculatePrisePercentage() async {
+    try {
+      final databaseRef = FirebaseDatabase.instance.ref();
+      final prisesSnapshot = await databaseRef.child('prises').get();
+
+      if (prisesSnapshot.exists) {
+        int totalPrises = 0;
+        int validPrises = 0;
+
+        prisesSnapshot.children.forEach((doc) {
+          final prise = doc.value as Map<dynamic, dynamic>;
+
+          // Vérifier si la prise appartient au patient actuel
+          if (prise['patientId'] == widget.patientUid) {
+            totalPrises++;
+            if (prise['priseValide'] == true) {
+              validPrises++;
+            }
+          }
+        });
+
+        return totalPrises > 0 ? (validPrises / totalPrises) * 100 : 0.0;
+      } else {
+        return 0.0;
+      }
+    } catch (e) {
+      print('Erreur lors du calcul des prises : $e');
+      return 0.0;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: Text("Profil du patient"),
-        backgroundColor: Colors.blueAccent,
+        title: Text(
+          "Profil Patient",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        centerTitle: true,
+        elevation: 0,
+        backgroundColor: Colors.blue.shade700,
         actions: [
           IconButton(
             icon: Icon(Icons.add, color: Colors.white),
@@ -128,225 +160,341 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder:
-                      (context) =>
-                          PrescriptionPage(patientUid: widget.patientUid),
+                  builder: (context) =>
+                      PrescriptionPage(patientUid: widget.patientUid),
                 ),
               );
             },
           ),
         ],
       ),
-      body:
-          isLoading
-              ? Center(child: CircularProgressIndicator())
-              : patientData == null
+      body: isLoading
+          ? Center(child: CircularProgressIndicator())
+          : patientData == null
               ? Center(child: Text("Données du patient non trouvées."))
               : SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Displaying patient data
-                      Card(
-                        elevation: 4,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(Icons.person, color: Colors.blueAccent),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    "Nom : ${patientData!['nom'] ?? 'Inconnu'}",
-                                    style: TextStyle(fontSize: 18),
-                                  ),
-                                ],
-                              ),
-                              SizedBox(height: 10),
-                              Row(
-                                children: [
-                                  Icon(Icons.email, color: Colors.blueAccent),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    "Email : ${patientData!['email'] ?? 'Non fourni'}",
-                                    style: TextStyle(fontSize: 18),
-                                  ),
-                                ],
-                              ),
-                              SizedBox(height: 10),
-                              Row(
-                                children: [
-                                  Icon(Icons.phone, color: Colors.blueAccent),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    "Téléphone : ${patientData!['telephone'] ?? 'Non fourni'}",
-                                    style: TextStyle(fontSize: 18),
-                                  ),
-                                ],
-                              ),
-                            ],
+                      // Header arrondi
+                      Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.symmetric(vertical: 32),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.blue.shade700, Colors.lightBlue.shade400],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.vertical(
+                            bottom: Radius.circular(32),
                           ),
                         ),
-                      ),
-                      SizedBox(height: 20),
-                      Text(
-                        "Prescriptions :",
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
+                        child: Column(
+                          children: [
+                            CircleAvatar(
+                              radius: 44,
+                              backgroundColor: Colors.white,
+                              child: Icon(Icons.person, size: 48, color: Colors.blue.shade700),
+                            ),
+                            SizedBox(height: 12),
+                            Text(
+                              patientData!['nom'] ?? 'Inconnu',
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              patientData!['email'] ?? 'Email non fourni',
+                              style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white70),
+                            ),
+                            SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _buildInfoItem(
+                                  context,
+                                  Icons.phone,
+                                  patientData!['telephone'] ?? 'Non fourni',
+                                  'Téléphone',
+                                ),
+                                SizedBox(width: 24),
+                                _buildInfoItem(
+                                  context,
+                                  Icons.calendar_today,
+                                  '25 ans', // Exemple d'âge
+                                  'Âge',
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
-                      prescriptions.isEmpty
-                          ? Padding(
-                            padding: const EdgeInsets.only(top: 10),
-                            child: Text("Aucune prescription trouvée."),
-                          )
-                          : ListView.builder(
-                            shrinkWrap: true,
-                            physics: NeverScrollableScrollPhysics(),
-                            itemCount: prescriptions.length,
-                            itemBuilder: (context, index) {
-                              final prescription = prescriptions[index];
-                              return Card(
-                                margin: EdgeInsets.symmetric(vertical: 10.0),
-                                elevation: 3,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12.0),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      ListTile(
-                                        leading: Icon(
-                                          Icons.calendar_today,
-                                          color: Colors.blueAccent,
-                                        ),
-                                        title: Text(
-                                          "Date : ${prescription['date'] ?? 'Non spécifiée'}",
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        subtitle: Text(
-                                          "Médecin : ${prescription['medecinPrenom'] ?? ''} ${prescription['medecinNom'] ?? ''}",
-                                        ),
-                                      ),
-                                      Divider(),
-                                      if (prescription['compartiments'] != null)
-                                        ...List.generate(
-                                          (prescription['compartiments']
-                                                  as List)
-                                              .length,
-                                          (i) {
-                                            final compartiment =
-                                                (prescription['compartiments']
-                                                    as List)[i];
-
-                                            if (compartiment['name'] == null ||
-                                                compartiment['name']
-                                                    .toString()
-                                                    .trim()
-                                                    .isEmpty) {
-                                              return SizedBox.shrink();
-                                            }
-
-                                            return Padding(
-                                              padding: const EdgeInsets.only(
-                                                left: 8.0,
-                                                bottom: 10,
-                                              ),
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Row(
-                                                    children: [
-                                                      Icon(
-                                                        Icons.medication,
-                                                        color: Colors.green,
-                                                      ),
-                                                      SizedBox(width: 8),
-                                                      Text(
-                                                        "Médicament : ${compartiment['madicament_name']}",
-                                                        style: TextStyle(
-                                                          fontSize: 16,
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  SizedBox(height: 6),
-                                                  if (compartiment['horaires'] !=
-                                                      null)
-                                                    ...List.generate(
-                                                      (compartiment['horaires']
-                                                              as List)
-                                                          .length,
-                                                      (j) {
-                                                        final horaire =
-                                                            (compartiment['horaires']
-                                                                as List)[j];
-                                                        return Padding(
-                                                          padding:
-                                                              const EdgeInsets.symmetric(
-                                                                vertical: 2.0,
-                                                                horizontal:
-                                                                    12.0,
-                                                              ),
-                                                          child: Row(
-                                                            children: [
-                                                              Icon(
-                                                                Icons
-                                                                    .access_time,
-                                                                size: 18,
-                                                                color:
-                                                                    Colors
-                                                                        .grey[700],
-                                                              ),
-                                                              SizedBox(
-                                                                width: 6,
-                                                              ),
-                                                              Expanded(
-                                                                child: Text(
-                                                                  "${horaire['description'] ?? 'Non spécifiée'} à ${horaire['horaire'] ?? 'Non spécifié'}",
-                                                                  style:
-                                                                      TextStyle(
-                                                                        fontSize:
-                                                                            14,
-                                                                      ),
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        );
-                                                      },
-                                                    ),
-                                                ],
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                    ],
+                      SizedBox(height: 18),
+                      // Pourcentage de prises valides
+                      FutureBuilder<double>(
+                        future: _calculatePrisePercentage(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return Padding(
+                              padding: const EdgeInsets.all(24.0),
+                              child: Center(child: CircularProgressIndicator()),
+                            );
+                          }
+                          final percentage = snapshot.data ?? 0.0;
+                          return GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => HistoriquePrisesPage(
+                                    patientUid: widget.patientUid,
                                   ),
                                 ),
                               );
                             },
+                            child: Card(
+                              margin: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                              elevation: 2,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 18.0, horizontal: 24),
+                                child: Row(
+                                  children: [
+                                    Stack(
+                                      alignment: Alignment.center,
+                                      children: [
+                                        SizedBox(
+                                          width: 54,
+                                          height: 54,
+                                          child: CircularProgressIndicator(
+                                            value: percentage / 100,
+                                            strokeWidth: 7,
+                                            backgroundColor: Colors.blue.shade100,
+                                            valueColor: AlwaysStoppedAnimation<Color>(
+                                              Colors.blue.shade700,
+                                            ),
+                                          ),
+                                        ),
+                                        Text(
+                                          "${percentage.toStringAsFixed(0)}%",
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.blue.shade700,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(width: 18),
+                                    Expanded(
+                                      child: Text(
+                                        "Prises valides sur l'ensemble",
+                                        style: theme.textTheme.titleMedium?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.blue.shade700,
+                                        ),
+                                      ),
+                                    ),
+                                    Icon(Icons.arrow_forward_ios, color: Colors.blue.shade700, size: 18),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      SizedBox(height: 18),
+                      // Prescriptions
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18.0),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            "Prescriptions médicales",
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue.shade700,
+                            ),
                           ),
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      if (prescriptions.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.all(32.0),
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.medication_outlined,
+                                size: 60,
+                                color: Colors.grey.shade400,
+                              ),
+                              SizedBox(height: 16),
+                              Text(
+                                "Aucune prescription trouvée",
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        ...prescriptions.map((prescription) =>
+                          _buildPrescriptionCard(context, prescription)
+                        ).toList(),
+                      SizedBox(height: 24),
                     ],
                   ),
                 ),
+    );
+  }
+
+  Widget _buildInfoItem(
+    BuildContext context,
+    IconData icon,
+    String value,
+    String label,
+  ) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.blue.shade50,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: Colors.blue.shade700),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+        ),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+      ],
+    );
+  }
+
+  Widget _buildPrescriptionCard(
+    BuildContext context,
+    Map<String, dynamic> prescription,
+  ) {
+    final theme = Theme.of(context);
+    final compartiments = (prescription['compartiments'] as List?) ?? [];
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.calendar_today, color: Colors.blue.shade700, size: 20),
+                SizedBox(width: 10),
+                Text(
+                  "Prescription du ${prescription['date'] ?? 'Non spécifiée'}",
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue.shade800,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 14),
+            // Affichage 2 compartiments par ligne
+            for (int i = 0; i < compartiments.length; i += 2)
+              Row(
+                children: [
+                  Expanded(child: _buildCompCard(theme, compartiments[i])),
+                  SizedBox(width: 10),
+                  if (i + 1 < compartiments.length)
+                    Expanded(child: _buildCompCard(theme, compartiments[i + 1]))
+                  else
+                    Expanded(child: SizedBox()),
+                ],
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompCard(ThemeData theme, Map compartiment) {
+    return Card(
+      color: Colors.blue.shade50,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.medication, color: Colors.blue.shade700, size: 20),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    compartiment['madicament_name'] ?? 'Non spécifié',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue.shade900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 6),
+            if (compartiment['horaires'] != null)
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: (compartiment['horaires'] as List).map<Widget>((horaire) {
+                  return Chip(
+                    label: Text(
+                      horaire.toString(),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.white,
+                      ),
+                    ),
+                    backgroundColor: Colors.blue.shade600,
+                    shape: StadiumBorder(),
+                  );
+                }).toList(),
+              ),
+            if (compartiment['note'] != null &&
+                compartiment['note'].toString().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.info_outline, size: 16, color: Colors.orange.shade700),
+                    SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        compartiment['note'],
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: Colors.orange.shade800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

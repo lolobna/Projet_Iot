@@ -1,27 +1,34 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:intl/intl.dart';
 
-class PatientHistoryPage extends StatefulWidget {
-  const PatientHistoryPage({Key? key}) : super(key: key);
+class HistoriquePrisesPage extends StatefulWidget {
+  final String patientUid;
+
+  const HistoriquePrisesPage({Key? key, required this.patientUid})
+    : super(key: key);
 
   @override
-  State<PatientHistoryPage> createState() => _PatientHistoryPageState();
+  _HistoriquePrisesPageState createState() => _HistoriquePrisesPageState();
 }
 
-class _PatientHistoryPageState extends State<PatientHistoryPage> {
-  List<String> compartments = ['Tous'];
-  String selectedCompartment = 'Tous';
-  DateTime selectedDate = DateTime.now();
+class _HistoriquePrisesPageState extends State<HistoriquePrisesPage> {
+  List<String> compartments = [
+    'Tous',
+    'A',
+    'B',
+    'C',
+    'D',
+  ]; // Liste des compartiments
+  String selectedCompartment = 'Tous'; // Compartiment sélectionné par défaut
+  DateTime selectedDate =
+      DateTime.now(); // Date sélectionnée (par défaut : aujourd'hui)
 
   @override
   void initState() {
     super.initState();
     _fetchCompartments();
   }
-
-  String get userId => FirebaseAuth.instance.currentUser!.uid;
 
   Future<List<Map<String, dynamic>>> _fetchPrises() async {
     try {
@@ -31,28 +38,24 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
       if (prisesSnapshot.exists) {
         List<Map<String, dynamic>> prises = [];
 
-        for (var doc in prisesSnapshot.children) {
-          final prise = Map<String, dynamic>.from(doc.value as Map);
+        prisesSnapshot.children.forEach((doc) {
+          final prise = doc.value as Map<dynamic, dynamic>;
 
-          if (prise['patientId'] == userId && prise.containsKey('date')) {
-            final priseDate = DateTime.parse(prise['date']);
-
-            if (DateFormat('yyyy-MM-dd').format(priseDate) ==
-                DateFormat('yyyy-MM-dd').format(selectedDate)) {
-              if (selectedCompartment == 'Tous' ||
-                  prise['compartiment'] == selectedCompartment) {
-                prises.add({
-                  'compartiment': prise['compartiment'],
-                  'date': prise['date'],
-                  'priseValide': prise['priseValide'],
-                  'retard': prise['retard'],
-                });
-              }
-            }
+          // Vérifier si la prise appartient au patient actuel et correspond à la date sélectionnée
+          if (prise['patientId'] == widget.patientUid &&
+              (selectedCompartment == 'Tous' ||
+                  prise['compartiment'] == selectedCompartment) &&
+              DateFormat('yyyy-MM-dd').format(DateTime.parse(prise['date'])) ==
+                  DateFormat('yyyy-MM-dd').format(selectedDate)) {
+            prises.add({
+              'compartiment': prise['compartiment'],
+              'date': prise['date'],
+              'priseValide': prise['priseValide'],
+              'retard': prise['retard'],
+            });
           }
-        }
+        });
 
-        prises.sort((a, b) => a['date'].compareTo(b['date']));
         return prises;
       } else {
         return [];
@@ -71,15 +74,17 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
       if (prisesSnapshot.exists) {
         Set<String> uniqueCompartments = {};
 
-        for (var doc in prisesSnapshot.children) {
-          final prise = Map<String, dynamic>.from(doc.value as Map);
-          if (prise['patientId'] == userId && prise['compartiment'] != null) {
-            uniqueCompartments.add(prise['compartiment'].toString());
+        prisesSnapshot.children.forEach((doc) {
+          final prise = doc.value as Map<dynamic, dynamic>;
+
+          // Vérifier si la prise appartient au patient actuel
+          if (prise['patientId'] == widget.patientUid) {
+            uniqueCompartments.add(prise['compartiment']);
           }
-        }
+        });
 
         setState(() {
-          compartments = ['Tous', ...uniqueCompartments.toList()..sort()];
+          compartments = ['Tous', ...uniqueCompartments.toList()];
         });
       }
     } catch (e) {
@@ -97,7 +102,8 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
         for (var doc in prescriptionsSnapshot.children) {
           final prescription = Map<String, dynamic>.from(doc.value as Map);
 
-          if (prescription['patientId'] == userId) {
+          // Vérifier si la prescription appartient au patient actuel
+          if (prescription['patientId'] == widget.patientUid) {
             return Map<String, dynamic>.from(
               prescription['compartiments'] as Map,
             );
@@ -112,34 +118,68 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
     }
   }
 
+  Widget _buildDropdown() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            "Filtrer par compartiment : ",
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          DropdownButton<String>(
+            value: selectedCompartment,
+            items:
+                compartments
+                    .map(
+                      (compartment) => DropdownMenuItem(
+                        value: compartment,
+                        child: Text(compartment),
+                      ),
+                    )
+                    .toList(),
+            onChanged: (value) {
+              setState(() {
+                selectedCompartment = value!;
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFilterChips() {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 8.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
-        children: compartments.map((compartment) {
-          final isSelected = selectedCompartment == compartment;
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4.0),
-            child: ChoiceChip(
-              label: Text(
-                compartment,
-                style: TextStyle(
-                  color: isSelected ? Colors.white : Colors.black,
-                  fontWeight: FontWeight.bold,
+        children:
+            compartments.map((compartment) {
+              final isSelected = selectedCompartment == compartment;
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                child: ChoiceChip(
+                  label: Text(
+                    compartment,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.black,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  selected: isSelected,
+                  selectedColor: Colors.blue.shade800,
+                  backgroundColor: Colors.grey.shade200,
+                  onSelected: (selected) {
+                    setState(() {
+                      selectedCompartment = compartment;
+                    });
+                  },
                 ),
-              ),
-              selected: isSelected,
-              selectedColor: Colors.blue.shade800,
-              backgroundColor: Colors.grey.shade200,
-              onSelected: (selected) {
-                setState(() {
-                  selectedCompartment = compartment;
-                });
-              },
-            ),
-          );
-        }).toList(),
+              );
+            }).toList(),
       ),
     );
   }
@@ -182,7 +222,7 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
     if (prise['priseValide'] == true) {
       icon = Icons.check_circle;
       iconColor = Colors.green;
-    } else if ((prise['retard'] ?? 0) > 0) {
+    } else if (prise['retard'] > 0) {
       icon = Icons.warning_amber_rounded;
       iconColor = Colors.orange;
     } else {
@@ -190,8 +230,11 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
       iconColor = Colors.red;
     }
 
+    // Heure réelle de prise
     final priseDate = DateTime.parse(prise['date']);
+    // Retard en minutes (peut être null)
     final retard = (prise['retard'] ?? 0) as int;
+    // Calcul de l'heure théorique
     final horaireTheorique = priseDate.subtract(Duration(minutes: retard));
 
     return Card(
@@ -243,9 +286,10 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
   }
 
   Widget _buildPrescriptionInfo(Map<String, dynamic> prescription) {
+    // prescription correspond à prescription['compartiments']
     if (selectedCompartment == 'Tous' ||
         !prescription.containsKey(selectedCompartment)) {
-      return SizedBox();
+      return SizedBox(); // Ne rien afficher si "Tous" est sélectionné ou si le compartiment n'existe pas
     }
 
     final compartimentDetails = Map<String, dynamic>.from(
@@ -260,97 +304,99 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
             ? horaires
             : (horaires is Map ? horaires.values.toList() : []);
     final String note = compartimentDetails['note'] ?? 'Aucune note';
+    final bool isVide = compartimentDetails['vide'] ?? false;
 
     return Card(
-      elevation: 6,
-      margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+  elevation: 6,
+  margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
+  shape: RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(20),
+  ),
+  shadowColor: Colors.blueGrey.withOpacity(0.3),
+  child: Container(
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        colors: [Colors.blue.shade50, Colors.white],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
       ),
-      shadowColor: Colors.blueGrey.withOpacity(0.3),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.blue.shade50, Colors.white],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Icon(Icons.medication_rounded, color: Colors.blueAccent, size: 30),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      "Compartiment : $selectedCompartment",
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
+              Icon(Icons.medication_rounded, color: Colors.blueAccent, size: 30),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  "Compartiment : $selectedCompartment",
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
                   ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(Icons.local_pharmacy, color: Colors.deepPurple, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      "Médicament : $medicamentName",
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: Colors.grey.shade800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(Icons.access_time, color: Colors.teal, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      "Horaires : ${horairesList.join(', ')}",
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: Colors.grey.shade800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(Icons.note_alt_outlined, color: Colors.orange, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      "Note : $note",
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: Colors.grey.shade800,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ],
           ),
-        ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(Icons.local_pharmacy, color: Colors.deepPurple, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  "Médicament : $medicamentName",
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.access_time, color: Colors.teal, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  "Horaires : ${horairesList.join(', ')}",
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.note_alt_outlined, color: Colors.orange, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  "Note : $note",
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
-    );
+    ),
+  ),
+);
+
   }
 
   @override
@@ -364,8 +410,8 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            _buildFilterChips(),
-            _buildDateSelector(),
+            _buildFilterChips(), // Boutons pour sélectionner le compartiment
+            _buildDateSelector(), // Sélecteur de date
             FutureBuilder<Map<String, dynamic>>(
               future: _fetchPrescription(),
               builder: (context, snapshot) {
@@ -393,6 +439,7 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
                   );
                 }
 
+                // prescription correspond à prescription['compartiments']
                 return _buildPrescriptionInfo(prescription);
               },
             ),
@@ -416,12 +463,9 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
 
                 if (prises.isEmpty) {
                   return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32.0),
-                      child: Text(
-                        "Aucune prise trouvée pour cette date.",
-                        style: TextStyle(fontSize: 16, color: Colors.grey),
-                      ),
+                    child: Text(
+                      "Aucune prise trouvée.",
+                      style: TextStyle(fontSize: 16, color: Colors.grey),
                     ),
                   );
                 }
