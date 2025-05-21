@@ -44,7 +44,7 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
                 prises.add({
                   'compartiment': prise['compartiment'],
                   'date': prise['date'],
-                  'priseValide': prise['priseValide'],
+                  'status': prise['status'],
                   'retard': prise['retard'],
                 });
               }
@@ -117,29 +117,30 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
       padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 8.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
-        children: compartments.map((compartment) {
-          final isSelected = selectedCompartment == compartment;
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4.0),
-            child: ChoiceChip(
-              label: Text(
-                compartment,
-                style: TextStyle(
-                  color: isSelected ? Colors.white : Colors.black,
-                  fontWeight: FontWeight.bold,
+        children:
+            compartments.map((compartment) {
+              final isSelected = selectedCompartment == compartment;
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                child: ChoiceChip(
+                  label: Text(
+                    compartment,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.black,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  selected: isSelected,
+                  selectedColor: Colors.blue.shade800,
+                  backgroundColor: Colors.grey.shade200,
+                  onSelected: (selected) {
+                    setState(() {
+                      selectedCompartment = compartment;
+                    });
+                  },
                 ),
-              ),
-              selected: isSelected,
-              selectedColor: Colors.blue.shade800,
-              backgroundColor: Colors.grey.shade200,
-              onSelected: (selected) {
-                setState(() {
-                  selectedCompartment = compartment;
-                });
-              },
-            ),
-          );
-        }).toList(),
+              );
+            }).toList(),
       ),
     );
   }
@@ -178,11 +179,12 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
   Widget _buildPriseCard(Map<String, dynamic> prise) {
     IconData icon;
     Color iconColor;
+    final status = (prise['status'] ?? '').toString().toLowerCase();
 
-    if (prise['priseValide'] == true) {
+    if (status == 'valide' || status == 'respectée' || status == 'respecte') {
       icon = Icons.check_circle;
       iconColor = Colors.green;
-    } else if ((prise['retard'] ?? 0) > 0) {
+    } else if (status == 'en retard') {
       icon = Icons.warning_amber_rounded;
       iconColor = Colors.orange;
     } else {
@@ -220,19 +222,27 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    "Heure réelle : ${DateFormat('HH:mm').format(priseDate)}",
-                    style: TextStyle(fontSize: 14, color: Colors.grey[700]),
-                  ),
-                  Text(
-                    "Heure prévue : ${DateFormat('HH:mm').format(horaireTheorique)}",
-                    style: TextStyle(fontSize: 14, color: Colors.blue[700]),
-                  ),
-                  if (prise['retard'] != null)
+                  // Pour raté : n'affiche que l'heure prévue
+                  if (status == 'raté' || status == 'ratée' || status == 'manquée' || status == 'manque')
                     Text(
-                      "Retard : ${prise['retard']} min",
+                      "Heure prévue : ${DateFormat('HH:mm').format(horaireTheorique)}",
+                      style: TextStyle(fontSize: 14, color: Colors.blue[700]),
+                    )
+                  else ...[
+                    Text(
+                      "Heure réelle : ${DateFormat('HH:mm').format(priseDate)}",
                       style: TextStyle(fontSize: 14, color: Colors.grey[700]),
                     ),
+                    Text(
+                      "Heure prévue : ${DateFormat('HH:mm').format(horaireTheorique)}",
+                      style: TextStyle(fontSize: 14, color: Colors.blue[700]),
+                    ),
+                    if ((status == 'valide' || status == 'en retard') && retard > 0)
+                      Text(
+                        "Retard : $retard min",
+                        style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+                      ),
+                  ],
                 ],
               ),
             ),
@@ -264,9 +274,7 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
     return Card(
       elevation: 6,
       margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       shadowColor: Colors.blueGrey.withOpacity(0.3),
       child: Container(
         decoration: BoxDecoration(
@@ -284,7 +292,11 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
             children: [
               Row(
                 children: [
-                  Icon(Icons.medication_rounded, color: Colors.blueAccent, size: 30),
+                  Icon(
+                    Icons.medication_rounded,
+                    color: Colors.blueAccent,
+                    size: 30,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -301,7 +313,11 @@ class _PatientHistoryPageState extends State<PatientHistoryPage> {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Icon(Icons.local_pharmacy, color: Colors.deepPurple, size: 20),
+                  Icon(
+                    Icons.local_pharmacy,
+                    color: Colors.deepPurple,
+                    size: 20,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(

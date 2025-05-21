@@ -3,8 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 
 class UserService {
-  static final _auth = FirebaseAuth.instance;
-  static final _db = FirebaseFirestore.instance;
+  static final FirebaseAuth _auth = FirebaseAuth.instance;
+  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+  static final DatabaseReference _realtimeDB = FirebaseDatabase.instance.ref();
 
   static Future<void> signUp({
     required String email,
@@ -20,7 +21,7 @@ class UserService {
     );
     final uid = userCredential.user!.uid;
 
-    // 🔥 Écriture dans Firestore
+    // Collection Firestore selon rôle
     final roleCollection = role == "medecin" ? "medecin" : "patient";
 
     await _db.collection(roleCollection).doc(uid).set({
@@ -31,7 +32,7 @@ class UserService {
       if (role == "patient") "CIN": cin,
     });
 
-    // ✅ Écriture dans Realtime Database pour le profil patient
+    // Écriture dans Realtime Database
     await FirebaseDatabase.instance.ref("users/$uid").set({
       "email": email,
       "nom": nom,
@@ -55,5 +56,14 @@ class UserService {
     if (patientDoc.exists) return patientDoc["role"].toString();
 
     throw Exception("Rôle utilisateur non trouvé");
+  }
+
+  // Nouvelle méthode pour mettre à jour l'UID du patient connecté dans Realtime DB
+  static Future<void> updateCurrentPatientId() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    // Stockage de l'UID dans Realtime Database, clé "currentPatientId"
+    await _realtimeDB.child('currentPatientId').set(user.uid);
   }
 }

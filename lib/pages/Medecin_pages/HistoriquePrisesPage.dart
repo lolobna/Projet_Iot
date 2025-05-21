@@ -41,7 +41,6 @@ class _HistoriquePrisesPageState extends State<HistoriquePrisesPage> {
         prisesSnapshot.children.forEach((doc) {
           final prise = doc.value as Map<dynamic, dynamic>;
 
-          // Vérifier si la prise appartient au patient actuel et correspond à la date sélectionnée
           if (prise['patientId'] == widget.patientUid &&
               (selectedCompartment == 'Tous' ||
                   prise['compartiment'] == selectedCompartment) &&
@@ -50,7 +49,7 @@ class _HistoriquePrisesPageState extends State<HistoriquePrisesPage> {
             prises.add({
               'compartiment': prise['compartiment'],
               'date': prise['date'],
-              'priseValide': prise['priseValide'],
+              'status': prise['status'],
               'retard': prise['retard'],
             });
           }
@@ -218,11 +217,12 @@ class _HistoriquePrisesPageState extends State<HistoriquePrisesPage> {
   Widget _buildPriseCard(Map<String, dynamic> prise) {
     IconData icon;
     Color iconColor;
+    final status = (prise['status'] ?? '').toString().toLowerCase();
 
-    if (prise['priseValide'] == true) {
+    if (status == 'valide' || status == 'respectée' || status == 'respecte') {
       icon = Icons.check_circle;
       iconColor = Colors.green;
-    } else if (prise['retard'] > 0) {
+    } else if (status == 'en retard') {
       icon = Icons.warning_amber_rounded;
       iconColor = Colors.orange;
     } else {
@@ -230,11 +230,8 @@ class _HistoriquePrisesPageState extends State<HistoriquePrisesPage> {
       iconColor = Colors.red;
     }
 
-    // Heure réelle de prise
     final priseDate = DateTime.parse(prise['date']);
-    // Retard en minutes (peut être null)
     final retard = (prise['retard'] ?? 0) as int;
-    // Calcul de l'heure théorique
     final horaireTheorique = priseDate.subtract(Duration(minutes: retard));
 
     return Card(
@@ -263,19 +260,31 @@ class _HistoriquePrisesPageState extends State<HistoriquePrisesPage> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    "Heure réelle : ${DateFormat('HH:mm').format(priseDate)}",
-                    style: TextStyle(fontSize: 14, color: Colors.grey[700]),
-                  ),
-                  Text(
-                    "Heure prévue : ${DateFormat('HH:mm').format(horaireTheorique)}",
-                    style: TextStyle(fontSize: 14, color: Colors.blue[700]),
-                  ),
-                  if (prise['retard'] != null)
+                  // Pour raté/manquée : n'affiche que l'heure prévue
+                  if (status == 'raté' ||
+                      status == 'ratée' ||
+                      status == 'manquée' ||
+                      status == 'manque')
                     Text(
-                      "Retard : ${prise['retard']} min",
+                      "Heure prévue : ${DateFormat('HH:mm').format(horaireTheorique)}",
+                      style: TextStyle(fontSize: 14, color: Colors.blue[700]),
+                    )
+                  else ...[
+                    Text(
+                      "Heure réelle : ${DateFormat('HH:mm').format(priseDate)}",
                       style: TextStyle(fontSize: 14, color: Colors.grey[700]),
                     ),
+                    Text(
+                      "Heure prévue : ${DateFormat('HH:mm').format(horaireTheorique)}",
+                      style: TextStyle(fontSize: 14, color: Colors.blue[700]),
+                    ),
+                    if ((status == 'valide' || status == 'en retard') &&
+                        retard > 0)
+                      Text(
+                        "Retard : $retard min",
+                        style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+                      ),
+                  ],
                 ],
               ),
             ),
@@ -307,96 +316,101 @@ class _HistoriquePrisesPageState extends State<HistoriquePrisesPage> {
     final bool isVide = compartimentDetails['vide'] ?? false;
 
     return Card(
-  elevation: 6,
-  margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
-  shape: RoundedRectangleBorder(
-    borderRadius: BorderRadius.circular(20),
-  ),
-  shadowColor: Colors.blueGrey.withOpacity(0.3),
-  child: Container(
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        colors: [Colors.blue.shade50, Colors.white],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
+      elevation: 6,
+      margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shadowColor: Colors.blueGrey.withOpacity(0.3),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.blue.shade50, Colors.white],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.medication_rounded,
+                    color: Colors.blueAccent,
+                    size: 30,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      "Compartiment : $selectedCompartment",
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(
+                    Icons.local_pharmacy,
+                    color: Colors.deepPurple,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "Médicament : $medicamentName",
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: Colors.grey.shade800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.access_time, color: Colors.teal, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "Horaires : ${horairesList.join(', ')}",
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: Colors.grey.shade800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.note_alt_outlined, color: Colors.orange, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "Note : $note",
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: Colors.grey.shade800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
-      borderRadius: BorderRadius.circular(20),
-    ),
-    child: Padding(
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.medication_rounded, color: Colors.blueAccent, size: 30),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  "Compartiment : $selectedCompartment",
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Icon(Icons.local_pharmacy, color: Colors.deepPurple, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  "Médicament : $medicamentName",
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: Colors.grey.shade800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Icon(Icons.access_time, color: Colors.teal, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  "Horaires : ${horairesList.join(', ')}",
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: Colors.grey.shade800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Icon(Icons.note_alt_outlined, color: Colors.orange, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  "Note : $note",
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: Colors.grey.shade800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    ),
-  ),
-);
-
+    );
   }
 
   @override

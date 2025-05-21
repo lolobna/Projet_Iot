@@ -8,7 +8,6 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_application_1/pages/Medecin_pages/add_patient_page.dart';
 import 'package:flutter_application_1/pages/Medecin_pages/SelectPatientPage.dart';
 
-
 class FirebaseService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -20,8 +19,9 @@ class FirebaseService {
         final value = entry.value as Map<dynamic, dynamic>;
         return {
           'patientId': value['patientId'],
-          'priseValide': value['priseValide'] ?? false,
+
           'date': value['date'],
+          'status': value['status'],
         };
       }).toList();
     });
@@ -73,32 +73,47 @@ class _MedecinHomePageState extends State<MedecinHomePage> {
 
     for (var prise in prises) {
       final patientId = prise['patientId'] ?? 'Inconnu';
-      final isValid = prise['priseValide'] == true;
+      final status = (prise['status'] ?? '').toString().toLowerCase();
 
-      stats.putIfAbsent(patientId, () => {'total': 0, 'valid': 0});
+      stats.putIfAbsent(
+        patientId,
+        () => {'total': 0, 'valide': 0, 'enRetard': 0, 'rate': 0},
+      );
+
       stats[patientId]!['total'] = stats[patientId]!['total']! + 1;
-      if (isValid) {
-        stats[patientId]!['valid'] = stats[patientId]!['valid']! + 1;
+      if (status == 'valide') {
+        stats[patientId]!['valide'] = stats[patientId]!['valide']! + 1;
+      } else if (status == 'en retard') {
+        stats[patientId]!['enRetard'] = stats[patientId]!['enRetard']! + 1;
+      } else if (status == 'raté' || status == 'rate' || status == 'ratée') {
+        stats[patientId]!['rate'] = stats[patientId]!['rate']! + 1;
       }
     }
 
     stats.forEach((patientId, data) {
       final total = data['total'];
-      final valid = data['valid'];
-      final percentage = total > 0 ? (valid / total) * 100 : 0;
+      final valide = data['valide'];
+      final enRetard = data['enRetard'];
+      final rate = data['rate'];
+
+      final percentValide = total > 0 ? (valide / total) * 100 : 0.0;
+      final percentRetard = total > 0 ? (enRetard / total) * 100 : 0.0;
+      final percentRate = total > 0 ? (rate / total) * 100 : 0.0;
 
       String evaluation;
-      if (percentage > 95) {
+      if (percentValide > 95) {
         evaluation = 'Excellent';
-      } else if (percentage > 75) {
+      } else if (percentValide > 75) {
         evaluation = 'Très bien';
-      } else if (percentage > 50) {
+      } else if (percentValide > 50) {
         evaluation = 'Bien';
       } else {
         evaluation = 'À améliorer';
       }
 
-      data['percentage'] = percentage;
+      data['percentValide'] = percentValide;
+      data['percentRetard'] = percentRetard;
+      data['percentRate'] = percentRate;
       data['evaluation'] = evaluation;
     });
 
@@ -109,12 +124,8 @@ class _MedecinHomePageState extends State<MedecinHomePage> {
     List<Map<String, dynamic>> prises,
   ) {
     Map<String, Map<String, int>> dailyStats = {};
-    Map<String, Map<String, Map<String, dynamic>>> dailyPatientStats = {};
 
     for (var prise in prises) {
-      final patientId = prise['patientId'] ?? 'Inconnu';
-      final isValid = prise['priseValide'] == true;
-
       final dateString = prise['date'] as String;
       DateTime date;
       try {
@@ -122,48 +133,29 @@ class _MedecinHomePageState extends State<MedecinHomePage> {
       } catch (e) {
         continue;
       }
-
       final formattedDate = DateFormat('yyyy-MM-dd').format(date);
 
-      dailyPatientStats.putIfAbsent(formattedDate, () => {});
-      dailyPatientStats[formattedDate]!.putIfAbsent(
-        patientId,
-        () => {'total': 0, 'valid': 0},
+      final status = (prise['status'] ?? '').toString().toLowerCase();
+
+      dailyStats.putIfAbsent(
+        formattedDate,
+        () => {'valides': 0, 'enRetard': 0, 'ratees': 0},
       );
 
-      dailyPatientStats[formattedDate]![patientId]!['total'] =
-          dailyPatientStats[formattedDate]![patientId]!['total']! + 1;
-      if (isValid) {
-        dailyPatientStats[formattedDate]![patientId]!['valid'] =
-            dailyPatientStats[formattedDate]![patientId]!['valid']! + 1;
+      if (status == 'valide') {
+        dailyStats[formattedDate]!['valides'] =
+            dailyStats[formattedDate]!['valides']! + 1;
+      } else if (status == 'en retard') {
+        dailyStats[formattedDate]!['enRetard'] =
+            dailyStats[formattedDate]!['enRetard']! + 1;
+      } else if (status == 'raté' ||
+          status == 'ratée' ||
+          status == 'manquée' ||
+          status == 'manque') {
+        dailyStats[formattedDate]!['ratees'] =
+            dailyStats[formattedDate]!['ratees']! + 1;
       }
     }
-
-    dailyPatientStats.forEach((date, patientStats) {
-      dailyStats.putIfAbsent(
-        date,
-        () => {'Excellent': 0, 'Très bien': 0, 'Bien': 0, 'À améliorer': 0},
-      );
-
-      patientStats.forEach((patientId, stats) {
-        final total = stats['total'];
-        final valid = stats['valid'];
-        final percentage = total > 0 ? (valid / total) * 100 : 0;
-
-        String evaluation;
-        if (percentage > 95) {
-          evaluation = 'Excellent';
-        } else if (percentage > 75) {
-          evaluation = 'Très bien';
-        } else if (percentage > 50) {
-          evaluation = 'Bien';
-        } else {
-          evaluation = 'À améliorer';
-        }
-
-        dailyStats[date]![evaluation] = dailyStats[date]![evaluation]! + 1;
-      });
-    });
 
     return dailyStats;
   }
@@ -242,9 +234,7 @@ class _MedecinHomePageState extends State<MedecinHomePage> {
           fontSize: 12,
         ),
         backgroundColor: Colors.grey[200],
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }
@@ -263,7 +253,7 @@ class _MedecinHomePageState extends State<MedecinHomePage> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
+            colors: [color.withOpacity(0.13), color.withOpacity(0.05)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -309,7 +299,7 @@ class _MedecinHomePageState extends State<MedecinHomePage> {
             ),
             const SizedBox(height: 8),
             LinearProgressIndicator(
-              value: data['percentage'] / 100,
+              value: (data['percentValide'] ?? 0) / 100,
               backgroundColor: color.withOpacity(0.2),
               color: color,
               minHeight: 8,
@@ -320,19 +310,49 @@ class _MedecinHomePageState extends State<MedecinHomePage> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '${data['valid']}/${data['total']} prises validées',
+                  '${data['valide']}/${data['total']} valides',
                   style: GoogleFonts.poppins(
                     fontSize: 12,
                     color: Colors.black54,
                   ),
                 ),
                 Text(
-                  '${data['percentage'].toStringAsFixed(1)}%',
+                  '${(data['percentValide'] ?? 0).toStringAsFixed(1)}%',
                   style: GoogleFonts.poppins(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: color,
                   ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      color: Colors.orange,
+                      size: 16,
+                    ),
+                    SizedBox(width: 4),
+                    Text(
+                      'Retard: ${(data['percentRetard'] ?? 0).toStringAsFixed(1)}%',
+                      style: TextStyle(color: Colors.orange[800], fontSize: 12),
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    Icon(Icons.cancel, color: Colors.red, size: 16),
+                    SizedBox(width: 4),
+                    Text(
+                      'Ratées: ${(data['percentRate'] ?? 0).toStringAsFixed(1)}%',
+                      style: TextStyle(color: Colors.red[800], fontSize: 12),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -359,7 +379,7 @@ class _MedecinHomePageState extends State<MedecinHomePage> {
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-     drawer: Drawer(
+      drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
@@ -371,30 +391,54 @@ class _MedecinHomePageState extends State<MedecinHomePage> {
                   CircleAvatar(
                     radius: 30,
                     backgroundColor: Colors.white,
-                    child: Icon(Icons.person, size: 40, color: Colors.blueAccent),
+                    child: Icon(
+                      Icons.person,
+                      size: 40,
+                      color: Colors.blueAccent,
+                    ),
                   ),
                   SizedBox(height: 10),
-                  Text('Médecin',
-                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                  Text('medecin@example.com',
-                      style: TextStyle(color: Colors.white70, fontSize: 14)),
+                  Text(
+                    'Médecin',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    'medecin@example.com',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
                 ],
               ),
             ),
             ListTile(
               leading: Icon(Icons.home),
               title: Text('Accueil'),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MedecinHomePage())),
+              onTap:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => MedecinHomePage()),
+                  ),
             ),
             ListTile(
               leading: Icon(Icons.person_add),
               title: Text('Ajouter un patient'),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddPatientPage())),
+              onTap:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => AddPatientPage()),
+                  ),
             ),
             ListTile(
               leading: Icon(Icons.list),
               title: Text('Voir les patients'),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SelectPatientPage())),
+              onTap:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => SelectPatientPage()),
+                  ),
             ),
             Divider(),
             ListTile(
@@ -478,7 +522,6 @@ class _MedecinHomePageState extends State<MedecinHomePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      
                       const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -544,10 +587,19 @@ class _MedecinHomePageState extends State<MedecinHomePage> {
                     child: Row(
                       children: [
                         _buildFilterChip('Tous', _selectedFilter == 'Tous'),
-                        _buildFilterChip('Excellent', _selectedFilter == 'Excellent'),
-                        _buildFilterChip('Très bien', _selectedFilter == 'Très bien'),
+                        _buildFilterChip(
+                          'Excellent',
+                          _selectedFilter == 'Excellent',
+                        ),
+                        _buildFilterChip(
+                          'Très bien',
+                          _selectedFilter == 'Très bien',
+                        ),
                         _buildFilterChip('Bien', _selectedFilter == 'Bien'),
-                        _buildFilterChip('À améliorer', _selectedFilter == 'À améliorer'),
+                        _buildFilterChip(
+                          'À améliorer',
+                          _selectedFilter == 'À améliorer',
+                        ),
                       ],
                     ),
                   ),
@@ -556,37 +608,47 @@ class _MedecinHomePageState extends State<MedecinHomePage> {
                 // Patients horizontal list
                 SizedBox(
                   height: 220,
-                  child: stats.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.people_outline,
-                                size: 48,
-                                color: Colors.grey[400],
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Aucun patient trouvé',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 16,
-                                  color: Colors.grey[600],
+                  child:
+                      stats.isEmpty
+                          ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.people_outline,
+                                  size: 48,
+                                  color: Colors.grey[400],
                                 ),
-                              ),
-                            ],
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Aucun patient trouvé',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 16,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                          : ListView(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            children:
+                                stats.entries
+                                    .where(
+                                      (entry) =>
+                                          _selectedFilter == 'Tous' ||
+                                          entry.value['evaluation'] ==
+                                              _selectedFilter,
+                                    )
+                                    .map(
+                                      (entry) => _buildPatientCard(
+                                        entry.key,
+                                        entry.value,
+                                      ),
+                                    )
+                                    .toList(),
                           ),
-                        )
-                      : ListView(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          children: stats.entries
-                              .where((entry) => 
-                                  _selectedFilter == 'Tous' || 
-                                  entry.value['evaluation'] == _selectedFilter)
-                              .map((entry) => _buildPatientCard(entry.key, entry.value))
-                              .toList(),
-                        ),
                 ),
 
                 // Graph section
@@ -621,215 +683,217 @@ class _MedecinHomePageState extends State<MedecinHomePage> {
                     children: [
                       SizedBox(
                         height: 250,
-                        child: dailyStats.isEmpty
-                            ? Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.bar_chart,
-                                      size: 48,
-                                      color: Colors.grey[400],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Aucune donnée à afficher',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 16,
-                                        color: Colors.grey[600],
+                        child:
+                            dailyStats.isEmpty
+                                ? Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.bar_chart,
+                                        size: 48,
+                                        color: Colors.grey[400],
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            : BarChart(
-                                BarChartData(
-                                  alignment: BarChartAlignment.spaceBetween,
-                                  maxY: dailyStats.values
-                                      .map(
-                                        (stats) => stats.values.reduce(
-                                          (a, b) => a > b ? a : b,
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Aucune donnée à afficher',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 16,
+                                          color: Colors.grey[600],
                                         ),
-                                      )
-                                      .reduce((a, b) => a > b ? a : b)
-                                      .toDouble() *
-                                      1.2,
-                                  minY: 0,
-                                  barGroups: dailyStats.entries.map((entry) {
-                                    final date = entry.key;
-                                    final stats = entry.value;
-
-                                    return BarChartGroupData(
-                                      x: dailyStats.keys.toList().indexOf(
-                                        date,
                                       ),
-                                      barsSpace: 4,
-                                      barRods: [
-                                        BarChartRodData(
-                                          toY: stats['Excellent']!.toDouble(),
-                                          color: Colors.green[700],
-                                          width: 14,
-                                          borderRadius: BorderRadius.vertical(
-                                            top: Radius.circular(6),
-                                          ),
-                                          backDrawRodData:
-                                              BackgroundBarChartRodData(
-                                            show: false,
-                                          ),
-                                        ),
-                                        BarChartRodData(
-                                          toY: stats['Très bien']!.toDouble(),
-                                          color: Colors.blue[600],
-                                          width: 14,
-                                          borderRadius: BorderRadius.vertical(
-                                            top: Radius.circular(6),
-                                          ),
-                                        ),
-                                        BarChartRodData(
-                                          toY: stats['Bien']!.toDouble(),
-                                          color: Colors.orange[600],
-                                          width: 14,
-                                          borderRadius: BorderRadius.vertical(
-                                            top: Radius.circular(6),
-                                          ),
-                                        ),
-                                        BarChartRodData(
-                                          toY: stats['À améliorer']!.toDouble(),
-                                          color: Colors.red[600],
-                                          width: 14,
-                                          borderRadius: BorderRadius.vertical(
-                                            top: Radius.circular(6),
-                                          ),
-                                        ),
-                                      ],
-                                    );
-                                  }).toList(),
-                                  titlesData: FlTitlesData(
-                                    show: true,
-                                    bottomTitles: AxisTitles(
-                                      sideTitles: SideTitles(
-                                        showTitles: true,
-                                        getTitlesWidget: (value, meta) {
-                                          final index = value.toInt();
-                                          if (index >= 0 &&
-                                              index < dailyStats.keys.length) {
-                                            final dateString = dailyStats.keys
-                                                .elementAt(index);
+                                    ],
+                                  ),
+                                )
+                                : BarChart(
+                                  BarChartData(
+                                    alignment: BarChartAlignment.spaceBetween,
+                                    maxY:
+                                        dailyStats.values
+                                            .map(
+                                              (stats) => stats.values.reduce(
+                                                (a, b) => a > b ? a : b,
+                                              ),
+                                            )
+                                            .reduce((a, b) => a > b ? a : b)
+                                            .toDouble() *
+                                        1.2,
+                                    minY: 0,
+                                    barGroups:
+                                        dailyStats.entries.map((entry) {
+                                          final date = entry.key;
+                                          final stats = entry.value;
 
-                                            try {
-                                              final date = DateTime.parse(
-                                                dateString,
-                                              );
-                                              final formattedDate = DateFormat(
-                                                'd MMM',
-                                                'fr_FR',
-                                              ).format(date);
-                                              return Text(
-                                                formattedDate,
-                                                style: const TextStyle(
-                                                  fontSize: 10,
-                                                  color: Colors.black,
-                                                ),
-                                              );
-                                            } catch (e) {
-                                              print(
-                                                'Erreur lors de l\'analyse de la date : $dateString - $e',
-                                              );
-                                              return const Text(
-                                                'Invalide',
-                                                style: TextStyle(
-                                                  fontSize: 10,
-                                                  color: Colors.red,
-                                                ),
-                                              );
+                                          return BarChartGroupData(
+                                            x: dailyStats.keys.toList().indexOf(
+                                              date,
+                                            ),
+                                            barsSpace: 4,
+                                            barRods: [
+                                              BarChartRodData(
+                                                toY:
+                                                    (stats['valides'] ?? 0)
+                                                        .toDouble(),
+                                                color: Colors.green[700],
+                                                width: 14,
+                                                borderRadius:
+                                                    BorderRadius.vertical(
+                                                      top: Radius.circular(6),
+                                                    ),
+                                              ),
+                                              BarChartRodData(
+                                                toY:
+                                                    (stats['enRetard'] ?? 0)
+                                                        .toDouble(),
+                                                color: Colors.orange[600],
+                                                width: 14,
+                                                borderRadius:
+                                                    BorderRadius.vertical(
+                                                      top: Radius.circular(6),
+                                                    ),
+                                              ),
+                                              BarChartRodData(
+                                                toY:
+                                                    (stats['ratees'] ?? 0)
+                                                        .toDouble(),
+                                                color: Colors.red[600],
+                                                width: 14,
+                                                borderRadius:
+                                                    BorderRadius.vertical(
+                                                      top: Radius.circular(6),
+                                                    ),
+                                              ),
+                                            ],
+                                          );
+                                        }).toList(),
+                                    titlesData: FlTitlesData(
+                                      show: true,
+                                      bottomTitles: AxisTitles(
+                                        sideTitles: SideTitles(
+                                          showTitles: true,
+                                          getTitlesWidget: (value, meta) {
+                                            final index = value.toInt();
+                                            if (index >= 0 &&
+                                                index <
+                                                    dailyStats.keys.length) {
+                                              final dateString = dailyStats.keys
+                                                  .elementAt(index);
+
+                                              try {
+                                                final date = DateTime.parse(
+                                                  dateString,
+                                                );
+                                                final formattedDate =
+                                                    DateFormat(
+                                                      'd MMM',
+                                                      'fr_FR',
+                                                    ).format(date);
+                                                return Text(
+                                                  formattedDate,
+                                                  style: const TextStyle(
+                                                    fontSize: 10,
+                                                    color: Colors.black,
+                                                  ),
+                                                );
+                                              } catch (e) {
+                                                print(
+                                                  'Erreur lors de l\'analyse de la date : $dateString - $e',
+                                                );
+                                                return const Text(
+                                                  'Invalide',
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    color: Colors.red,
+                                                  ),
+                                                );
+                                              }
+                                            } else {
+                                              return const SizedBox.shrink();
                                             }
-                                          } else {
-                                            return const SizedBox.shrink();
-                                          }
-                                        },
-                                        reservedSize: 28,
+                                          },
+                                          reservedSize: 28,
+                                        ),
+                                      ),
+                                      leftTitles: AxisTitles(
+                                        sideTitles: SideTitles(
+                                          showTitles: true,
+                                          reservedSize: 32,
+                                          interval: 1,
+                                          getTitlesWidget: (value, meta) {
+                                            return Text(
+                                              value.toInt().toString(),
+                                              style: GoogleFonts.poppins(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w500,
+                                                color: Colors.grey[700],
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                      rightTitles: const AxisTitles(
+                                        sideTitles: SideTitles(
+                                          showTitles: false,
+                                        ),
+                                      ),
+                                      topTitles: const AxisTitles(
+                                        sideTitles: SideTitles(
+                                          showTitles: false,
+                                        ),
                                       ),
                                     ),
-                                    leftTitles: AxisTitles(
-                                      sideTitles: SideTitles(
-                                        showTitles: true,
-                                        reservedSize: 32,
-                                        interval: 1,
-                                        getTitlesWidget: (value, meta) {
-                                          return Text(
-                                            value.toInt().toString(),
-                                            style: GoogleFonts.poppins(
-                                              fontSize: 10,
+                                    borderData: FlBorderData(
+                                      show: true,
+                                      border: Border.all(
+                                        color: Colors.grey.withOpacity(0.3),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    gridData: FlGridData(
+                                      show: true,
+                                      drawVerticalLine: false,
+                                      horizontalInterval: 1,
+                                      getDrawingHorizontalLine: (value) {
+                                        return FlLine(
+                                          color: Colors.grey.withOpacity(0.1),
+                                          strokeWidth: 1,
+                                        );
+                                      },
+                                    ),
+                                    barTouchData: BarTouchData(
+                                      enabled: true,
+                                      touchTooltipData: BarTouchTooltipData(
+                                        tooltipBgColor: Colors.white,
+                                        tooltipPadding: const EdgeInsets.all(8),
+                                        tooltipMargin: 8,
+                                        getTooltipItem: (
+                                          group,
+                                          groupIndex,
+                                          rod,
+                                          rodIndex,
+                                        ) {
+                                          final evaluation =
+                                              [
+                                                'valide',
+                                                'en retard',
+                                                'Manquée',
+                                              ][rodIndex];
+                                          return BarTooltipItem(
+                                            '$evaluation\n${rod.toY.toInt()} prises',
+                                            GoogleFonts.poppins(
+                                              fontSize: 12,
+                                              color: Colors.grey[800],
                                               fontWeight: FontWeight.w500,
-                                              color: Colors.grey[700],
                                             ),
                                           );
                                         },
                                       ),
                                     ),
-                                    rightTitles: const AxisTitles(
-                                      sideTitles: SideTitles(
-                                        showTitles: false,
-                                      ),
-                                    ),
-                                    topTitles: const AxisTitles(
-                                      sideTitles: SideTitles(
-                                        showTitles: false,
-                                      ),
-                                    ),
-                                  ),
-                                  borderData: FlBorderData(
-                                    show: true,
-                                    border: Border.all(
-                                      color: Colors.grey.withOpacity(0.3),
-                                      width: 1,
-                                    ),
-                                  ),
-                                  gridData: FlGridData(
-                                    show: true,
-                                    drawVerticalLine: false,
-                                    horizontalInterval: 1,
-                                    getDrawingHorizontalLine: (value) {
-                                      return FlLine(
-                                        color: Colors.grey.withOpacity(0.1),
-                                        strokeWidth: 1,
-                                      );
-                                    },
-                                  ),
-                                  barTouchData: BarTouchData(
-                                    enabled: true,
-                                    touchTooltipData: BarTouchTooltipData(
-                                      tooltipBgColor: Colors.white,
-                                      tooltipPadding: const EdgeInsets.all(8),
-                                      tooltipMargin: 8,
-                                      getTooltipItem: (
-                                        group,
-                                        groupIndex,
-                                        rod,
-                                        rodIndex,
-                                      ) {
-                                        final evaluation = [
-                                          'il est Excellent',
-                                          'il est Très bien',
-                                          'il est Bien',
-                                          'il ne prend pas ses medicaments',
-                                        ][rodIndex];
-                                        return BarTooltipItem(
-                                          '$evaluation\n${rod.toY.toInt()} patients',
-                                          GoogleFonts.poppins(
-                                            fontSize: 12,
-                                            color: Colors.grey[800],
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        );
-                                      },
-                                    ),
                                   ),
                                 ),
-                              ),
                       ),
 
-                      // Legend
+                    
                       Padding(
                         padding: const EdgeInsets.only(top: 16),
                         child: Wrap(
@@ -837,19 +901,9 @@ class _MedecinHomePageState extends State<MedecinHomePage> {
                           runSpacing: 8,
                           alignment: WrapAlignment.center,
                           children: [
-                            _buildLegendItem(
-                              const Color(0xFF4CAF50),
-                              'Excellent',
-                            ),
-                            _buildLegendItem(
-                              const Color(0xFF2196F3),
-                              'Très bien',
-                            ),
-                            _buildLegendItem(const Color(0xFFFF9800), 'Bien'),
-                            _buildLegendItem(
-                              const Color(0xFFF44336),
-                              'À améliorer',
-                            ),
+                            _buildLegendItem(Colors.green[700]!, 'Valide'),
+                            _buildLegendItem(Colors.orange[600]!, 'En retard'),
+                            _buildLegendItem(Colors.red[600]!, 'Ratée'),
                           ],
                         ),
                       ),

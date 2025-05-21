@@ -21,6 +21,10 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => isLoading = true);
     try {
       await UserService.login(emailController.text, passwordController.text);
+
+      // Après connexion réussie, met à jour l'UID courant dans Realtime DB
+      await UserService.updateCurrentPatientId();
+
       String role = await UserService.getUserRole();
 
       showDialog(
@@ -93,6 +97,10 @@ class _LoginPageState extends State<LoginPage> {
         idToken: googleAuth.idToken,
       );
       await FirebaseAuth.instance.signInWithCredential(credential);
+
+      // Après connexion Google, met à jour l'UID dans Realtime DB
+      await UserService.updateCurrentPatientId();
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => PatientHomePage()),

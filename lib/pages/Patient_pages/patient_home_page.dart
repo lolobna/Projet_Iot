@@ -160,7 +160,8 @@ class _PatientHomePageState extends State<PatientHomePage> {
       minute,
     );
 
-    if (notifTime.isBefore(tz.TZDateTime.now(tz.local))) return; // Ne pas notifier pour le passé
+    if (notifTime.isBefore(tz.TZDateTime.now(tz.local)))
+      return; // Ne pas notifier pour le passé
 
     await flutterLocalNotificationsPlugin.zonedSchedule(
       0,
@@ -186,7 +187,6 @@ class _PatientHomePageState extends State<PatientHomePage> {
     Map<String, Map<String, int>> stats = {};
     for (var p in _prises) {
       if (!p.containsKey('date')) continue;
-      // Si p['date'] est "2024-05-11 à 08:00", on extrait la partie date
       final fullDateStr = p['date'].toString();
       String dateKey;
       if (fullDateStr.contains('à')) {
@@ -196,15 +196,44 @@ class _PatientHomePageState extends State<PatientHomePage> {
       } else {
         dateKey = fullDateStr;
       }
-      final valid = p['priseValide'] == true;
-      stats.putIfAbsent(dateKey, () => {'Respectées': 0, 'Manquées': 0});
-      if (valid) {
-        stats[dateKey]!['Respectées'] = stats[dateKey]!['Respectées']! + 1;
-      } else {
-        stats[dateKey]!['Manquées'] = stats[dateKey]!['Manquées']! + 1;
+      final status = (p['status'] ?? '').toString().toLowerCase();
+      stats.putIfAbsent(
+        dateKey,
+        () => {'valides': 0, 'enRetard': 0, 'ratees': 0},
+      );
+      if (status == 'valide' || status == 'respectée' || status == 'respecte') {
+        stats[dateKey]!['valides'] = stats[dateKey]!['valides']! + 1;
+      } else if (status == 'en retard') {
+        stats[dateKey]!['enRetard'] = stats[dateKey]!['enRetard']! + 1;
+      } else if (status == 'raté' ||
+          status == 'ratée' ||
+          status == 'manquée' ||
+          status == 'manque') {
+        stats[dateKey]!['ratees'] = stats[dateKey]!['ratees']! + 1;
       }
     }
     return stats;
+  }
+
+  Map<String, int> getStatusStats(List<Map<String, dynamic>> prises) {
+    int valides = 0;
+    int enRetard = 0;
+    int ratees = 0;
+
+    for (var p in prises) {
+      final status = (p['status'] ?? '').toString().toLowerCase();
+      if (status == 'valide' || status == 'respectée' || status == 'respecte') {
+        valides++;
+      } else if (status == 'en retard') {
+        enRetard++;
+      } else if (status == 'raté' ||
+          status == 'ratée' ||
+          status == 'manquée' ||
+          status == 'manque') {
+        ratees++;
+      }
+    }
+    return {'valides': valides, 'enRetard': enRetard, 'ratees': ratees};
   }
 
   Widget buildBarChart() {
@@ -217,14 +246,21 @@ class _PatientHomePageState extends State<PatientHomePage> {
           BarChartData(
             barGroups: List.generate(keys.length, (i) {
               final d = keys[i];
-              final respect = data[d]?['Respectées']?.toDouble() ?? 0;
-              final missed = data[d]?['Manquées']?.toDouble() ?? 0;
+              final valides = data[d]?['valides']?.toDouble() ?? 0;
+              final enRetard = data[d]?['enRetard']?.toDouble() ?? 0;
+              final ratees = data[d]?['ratees']?.toDouble() ?? 0;
               return BarChartGroupData(
                 x: i,
                 barRods: [
-                  BarChartRodData(toY: respect, color: Colors.green, width: 6),
-                  BarChartRodData(toY: missed, color: Colors.red, width: 6),
+                  BarChartRodData(toY: valides, color: Colors.green, width: 8),
+                  BarChartRodData(
+                    toY: enRetard,
+                    color: Colors.orange,
+                    width: 8,
+                  ),
+                  BarChartRodData(toY: ratees, color: Colors.red, width: 8),
                 ],
+                barsSpace: 2,
               );
             }),
             titlesData: FlTitlesData(
@@ -260,6 +296,7 @@ class _PatientHomePageState extends State<PatientHomePage> {
             borderData: FlBorderData(show: false),
             barTouchData: BarTouchData(enabled: true),
             gridData: FlGridData(show: true),
+            groupsSpace: 16,
           ),
         );
   }
@@ -283,7 +320,7 @@ class _PatientHomePageState extends State<PatientHomePage> {
           final mInt = int.parse(parts[1]);
           final time = TimeOfDay(hour: hInt, minute: mInt);
           if (time.hour > now.hour ||
-              (time.hour == now.hour && time.minute > now.minute)) {
+              (time.hour == now.hour && time.minute >= now.minute)) {
             result.add({'compartiment': comp, 'nom': med, 'horaire': h});
           }
         }
@@ -296,6 +333,7 @@ class _PatientHomePageState extends State<PatientHomePage> {
 
   Widget buildUpcomingPrises() {
     final upcoming = getUpcomingToday();
+    print("Upcoming prises: $upcoming"); // <-- Ajoute ceci pour debug
     if (upcoming.isEmpty) return SizedBox();
 
     return Padding(
@@ -547,18 +585,12 @@ class _PatientHomePageState extends State<PatientHomePage> {
   }
 
   Widget buildDashboard() {
+    final stats = getStatusStats(_prises);
     int total = _prises.length;
-    int respected = _prises.where((p) => p['priseValide'] == true).length;
-    int missed =
-        _prises
-            .where(
-              (p) =>
-                  p['priseValide'] == false ||
-                  (p['status'] ?? '') == 'not taken',
-            )
-            .length;
-
-    double rate = total > 0 ? (respected / total) * 100 : 0;
+    int valides = stats['valides'] ?? 0;
+    int enRetard = stats['enRetard'] ?? 0;
+    int ratees = stats['ratees'] ?? 0;
+    double taux = total > 0 ? (valides / total) * 100 : 0;
     String last =
         _prises.isNotEmpty ? _prises.last['date'] ?? "Inconnue" : "Aucune";
 
@@ -582,24 +614,24 @@ class _PatientHomePageState extends State<PatientHomePage> {
             children: [
               _buildStatCard(
                 "Respectées",
-                respected,
+                valides,
                 Icons.check_circle,
                 Colors.green.shade100,
                 Colors.green,
               ),
               _buildStatCard(
-                "Manquées",
-                missed,
+                "En retard",
+                enRetard,
+                Icons.warning_amber_rounded,
+                Colors.orange.shade100,
+                Colors.orange,
+              ),
+              _buildStatCard(
+                "Ratées",
+                ratees,
                 Icons.cancel,
                 Colors.red.shade100,
                 Colors.red,
-              ),
-              _buildStatCard(
-                "Taux",
-                "${rate.toStringAsFixed(1)}%",
-                Icons.percent,
-                Colors.blue.shade100,
-                Colors.blue,
               ),
             ],
           ),
@@ -681,7 +713,7 @@ class _PatientHomePageState extends State<PatientHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Welcome $_userName'),
+        title: Text('bienvenu '),
         backgroundColor: Colors.blue,
         actions: [
           IconButton(
@@ -733,11 +765,11 @@ class _PatientHomePageState extends State<PatientHomePage> {
                   ),
                   SizedBox(height: 10),
                   Text(
-                    "Welcome 👋",
+                    "Bienvenu 👋",
                     style: TextStyle(color: Colors.white, fontSize: 22),
                   ),
                   Text(
-                    "We care about your health 💙",
+                    "Nous prenons soin de votre santé💙",
                     style: TextStyle(color: Colors.white70),
                   ),
                 ],
@@ -787,10 +819,21 @@ class _PatientHomePageState extends State<PatientHomePage> {
                               style: TextStyle(color: Colors.green[800]),
                             ),
                             SizedBox(width: 18),
+                            Container(
+                              width: 16,
+                              height: 16,
+                              color: Colors.orange,
+                            ),
+                            SizedBox(width: 6),
+                            Text(
+                              "En retard",
+                              style: TextStyle(color: Colors.orange[800]),
+                            ),
+                            SizedBox(width: 18),
                             Container(width: 16, height: 16, color: Colors.red),
                             SizedBox(width: 6),
                             Text(
-                              "Manquées",
+                              "Ratées",
                               style: TextStyle(color: Colors.red[800]),
                             ),
                           ],

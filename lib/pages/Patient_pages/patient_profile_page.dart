@@ -125,7 +125,7 @@ class _PatientProfilePageState extends State<PatientProfilePage>
     return Scaffold(
       backgroundColor: Color(0xFFF1F6FB),
       appBar: AppBar(
-        title: Text("My Profile"),
+        title: Text("mon Profil"),
         backgroundColor: Color(0xFF2196F3),
         elevation: 0,
       ),

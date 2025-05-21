@@ -123,7 +123,10 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
           // Vérifier si la prise appartient au patient actuel
           if (prise['patientId'] == widget.patientUid) {
             totalPrises++;
-            if (prise['priseValide'] == true) {
+            final status = (prise['status'] ?? '').toString().toLowerCase();
+            if (status == 'valide' ||
+                status == 'respectée' ||
+                status == 'respecte') {
               validPrises++;
             }
           }
@@ -160,197 +163,225 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) =>
-                      PrescriptionPage(patientUid: widget.patientUid),
+                  builder:
+                      (context) =>
+                          PrescriptionPage(patientUid: widget.patientUid),
                 ),
               );
             },
           ),
         ],
       ),
-      body: isLoading
-          ? Center(child: CircularProgressIndicator())
-          : patientData == null
+      body:
+          isLoading
+              ? Center(child: CircularProgressIndicator())
+              : patientData == null
               ? Center(child: Text("Données du patient non trouvées."))
               : SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      // Header arrondi
-                      Container(
-                        width: double.infinity,
-                        padding: EdgeInsets.symmetric(vertical: 32),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [Colors.blue.shade700, Colors.lightBlue.shade400],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.vertical(
-                            bottom: Radius.circular(32),
-                          ),
-                        ),
-                        child: Column(
-                          children: [
-                            CircleAvatar(
-                              radius: 44,
-                              backgroundColor: Colors.white,
-                              child: Icon(Icons.person, size: 48, color: Colors.blue.shade700),
-                            ),
-                            SizedBox(height: 12),
-                            Text(
-                              patientData!['nom'] ?? 'Inconnu',
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              patientData!['email'] ?? 'Email non fourni',
-                              style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white70),
-                            ),
-                            SizedBox(height: 12),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                _buildInfoItem(
-                                  context,
-                                  Icons.phone,
-                                  patientData!['telephone'] ?? 'Non fourni',
-                                  'Téléphone',
-                                ),
-                                SizedBox(width: 24),
-                                _buildInfoItem(
-                                  context,
-                                  Icons.calendar_today,
-                                  '25 ans', // Exemple d'âge
-                                  'Âge',
-                                ),
-                              ],
-                            ),
+                child: Column(
+                  children: [
+                    // Header arrondi
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.symmetric(vertical: 32),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.blue.shade700,
+                            Colors.lightBlue.shade400,
                           ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.vertical(
+                          bottom: Radius.circular(32),
                         ),
                       ),
-                      SizedBox(height: 18),
-                      // Pourcentage de prises valides
-                      FutureBuilder<double>(
-                        future: _calculatePrisePercentage(),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return Padding(
-                              padding: const EdgeInsets.all(24.0),
-                              child: Center(child: CircularProgressIndicator()),
-                            );
-                          }
-                          final percentage = snapshot.data ?? 0.0;
-                          return GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => HistoriquePrisesPage(
-                                    patientUid: widget.patientUid,
-                                  ),
-                                ),
-                              );
-                            },
-                            child: Card(
-                              margin: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                              elevation: 2,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 18.0, horizontal: 24),
-                                child: Row(
-                                  children: [
-                                    Stack(
-                                      alignment: Alignment.center,
-                                      children: [
-                                        SizedBox(
-                                          width: 54,
-                                          height: 54,
-                                          child: CircularProgressIndicator(
-                                            value: percentage / 100,
-                                            strokeWidth: 7,
-                                            backgroundColor: Colors.blue.shade100,
-                                            valueColor: AlwaysStoppedAnimation<Color>(
-                                              Colors.blue.shade700,
-                                            ),
-                                          ),
-                                        ),
-                                        Text(
-                                          "${percentage.toStringAsFixed(0)}%",
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.blue.shade700,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    SizedBox(width: 18),
-                                    Expanded(
-                                      child: Text(
-                                        "Prises valides sur l'ensemble",
-                                        style: theme.textTheme.titleMedium?.copyWith(
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.blue.shade700,
-                                        ),
-                                      ),
-                                    ),
-                                    Icon(Icons.arrow_forward_ios, color: Colors.blue.shade700, size: 18),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      SizedBox(height: 18),
-                      // Prescriptions
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 18.0),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            "Prescriptions médicales",
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
+                      child: Column(
+                        children: [
+                          CircleAvatar(
+                            radius: 44,
+                            backgroundColor: Colors.white,
+                            child: Icon(
+                              Icons.person,
+                              size: 48,
                               color: Colors.blue.shade700,
                             ),
                           ),
-                        ),
-                      ),
-                      SizedBox(height: 10),
-                      if (prescriptions.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.all(32.0),
-                          child: Column(
+                          SizedBox(height: 12),
+                          Text(
+                            patientData!['nom'] ?? 'Inconnu',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            patientData!['email'] ?? 'Email non fourni',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: Colors.white70,
+                            ),
+                          ),
+                          SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(
-                                Icons.medication_outlined,
-                                size: 60,
-                                color: Colors.grey.shade400,
+                              _buildInfoItem(
+                                context,
+                                Icons.phone,
+                                patientData!['telephone'] ?? 'Non fourni',
+                                'Téléphone',
                               ),
-                              SizedBox(height: 16),
-                              Text(
-                                "Aucune prescription trouvée",
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  color: Colors.grey.shade600,
-                                ),
+                              SizedBox(width: 24),
+                              _buildInfoItem(
+                                context,
+                                Icons.calendar_today,
+                                '25 ans', // Exemple d'âge
+                                'Âge',
                               ),
                             ],
                           ),
-                        )
-                      else
-                        ...prescriptions.map((prescription) =>
-                          _buildPrescriptionCard(context, prescription)
-                        ).toList(),
-                      SizedBox(height: 24),
-                    ],
-                  ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: 18),
+                    // Pourcentage de prises valides
+                    FutureBuilder<double>(
+                      future: _calculatePrisePercentage(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return Padding(
+                            padding: const EdgeInsets.all(24.0),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+                        final percentage = snapshot.data ?? 0.0;
+                        return GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder:
+                                    (context) => HistoriquePrisesPage(
+                                      patientUid: widget.patientUid,
+                                    ),
+                              ),
+                            );
+                          },
+                          child: Card(
+                            margin: EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 8,
+                            ),
+                            elevation: 2,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 18.0,
+                                horizontal: 24,
+                              ),
+                              child: Row(
+                                children: [
+                                  Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      SizedBox(
+                                        width: 54,
+                                        height: 54,
+                                        child: CircularProgressIndicator(
+                                          value: percentage / 100,
+                                          strokeWidth: 7,
+                                          backgroundColor: Colors.blue.shade100,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                Colors.blue.shade700,
+                                              ),
+                                        ),
+                                      ),
+                                      Text(
+                                        "${percentage.toStringAsFixed(0)}%",
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.blue.shade700,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(width: 18),
+                                  Expanded(
+                                    child: Text(
+                                      "Prises valides sur l'ensemble",
+                                      style: theme.textTheme.titleMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.blue.shade700,
+                                          ),
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.arrow_forward_ios,
+                                    color: Colors.blue.shade700,
+                                    size: 18,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    SizedBox(height: 18),
+                    // Prescriptions
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18.0),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          "Prescriptions médicales",
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue.shade700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 10),
+                    if (prescriptions.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.all(32.0),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.medication_outlined,
+                              size: 60,
+                              color: Colors.grey.shade400,
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              "Aucune prescription trouvée",
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      ...prescriptions
+                          .map(
+                            (prescription) =>
+                                _buildPrescriptionCard(context, prescription),
+                          )
+                          .toList(),
+                    SizedBox(height: 24),
+                  ],
                 ),
+              ),
     );
   }
 
@@ -399,7 +430,11 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
           children: [
             Row(
               children: [
-                Icon(Icons.calendar_today, color: Colors.blue.shade700, size: 20),
+                Icon(
+                  Icons.calendar_today,
+                  color: Colors.blue.shade700,
+                  size: 20,
+                ),
                 SizedBox(width: 10),
                 Text(
                   "Prescription du ${prescription['date'] ?? 'Non spécifiée'}",
@@ -459,18 +494,19 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
-                children: (compartiment['horaires'] as List).map<Widget>((horaire) {
-                  return Chip(
-                    label: Text(
-                      horaire.toString(),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: Colors.white,
-                      ),
-                    ),
-                    backgroundColor: Colors.blue.shade600,
-                    shape: StadiumBorder(),
-                  );
-                }).toList(),
+                children:
+                    (compartiment['horaires'] as List).map<Widget>((horaire) {
+                      return Chip(
+                        label: Text(
+                          horaire.toString(),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.white,
+                          ),
+                        ),
+                        backgroundColor: Colors.blue.shade600,
+                        shape: StadiumBorder(),
+                      );
+                    }).toList(),
               ),
             if (compartiment['note'] != null &&
                 compartiment['note'].toString().isNotEmpty)
@@ -479,7 +515,11 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.info_outline, size: 16, color: Colors.orange.shade700),
+                    Icon(
+                      Icons.info_outline,
+                      size: 16,
+                      color: Colors.orange.shade700,
+                    ),
                     SizedBox(width: 6),
                     Expanded(
                       child: Text(
